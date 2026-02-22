@@ -108,7 +108,7 @@ function buildFallbackLinks(context: TravelContext): TravelLink[] {
 
     const links: TravelLink[] = [
         {
-            label: "Search Flights on Google",
+            label: "Google Flights",
             url: `https://www.google.com/travel/flights/search?q=flights+from+${encodeURIComponent(origin)}+to+${destEncoded}`,
             icon: "✈️",
             category: "flight",
@@ -128,12 +128,19 @@ function buildFallbackLinks(context: TravelContext): TravelLink[] {
             category: "flight",
             description: "Compare cheapest fares",
         },
+        {
+            label: "Goibibo Flights",
+            url: `https://www.goibibo.com/flights/search?sourceCityCode=DEL&destinationCityCode=${dest.substring(0, 3).toUpperCase()}&travelDate=${depStr}&seatType=E&adults=1`,
+            icon: "🛩️",
+            category: "flight",
+            description: "Great offers on flights",
+        },
     ];
 
     if (context.budget === "luxury") {
         links.push(
             {
-                label: "Luxury Hotels – Booking.com",
+                label: "Booking.com – Luxury",
                 url: `https://www.booking.com/searchresults.html?ss=${destEncoded}&checkin=${depStr}&checkout=${retStr}&group_adults=${people}&nflt=class%3D5`,
                 icon: "🏰",
                 category: "hotel",
@@ -145,12 +152,26 @@ function buildFallbackLinks(context: TravelContext): TravelLink[] {
                 icon: "👑",
                 category: "hotel",
                 description: "Iconic Indian luxury",
+            },
+            {
+                label: "Agoda Luxury",
+                url: `https://www.agoda.com/search?city=${destEncoded}&checkIn=${depStr}&checkOut=${retStr}&adults=${people}&rooms=1&rating=80`,
+                icon: "🌟",
+                category: "hotel",
+                description: "Best luxury rates in Asia",
+            },
+            {
+                label: "Hotels.com",
+                url: `https://www.hotels.com/search.do?q-destination=${destEncoded}&q-check-in=${depStr}&q-check-out=${retStr}&q-rooms=1&q-room-0-adults=${people}`,
+                icon: "🏯",
+                category: "hotel",
+                description: "Exclusive deals & rewards",
             }
         );
     } else {
         links.push(
             {
-                label: "Hotels on Booking.com",
+                label: "Booking.com",
                 url: `https://www.booking.com/searchresults.html?ss=${destEncoded}&checkin=${depStr}&checkout=${retStr}&group_adults=${people}`,
                 icon: "🏨",
                 category: "hotel",
@@ -162,6 +183,48 @@ function buildFallbackLinks(context: TravelContext): TravelLink[] {
                 icon: "🏩",
                 category: "hotel",
                 description: "Trusted Indian hotel booking",
+            },
+            {
+                label: "OYO Rooms",
+                url: `https://www.oyorooms.com/search/?location=${destEncoded}`,
+                icon: "🛏️",
+                category: "hotel",
+                description: "Budget & mid-range hotels",
+            },
+            {
+                label: "Agoda",
+                url: `https://www.agoda.com/search?city=${destEncoded}&checkIn=${depStr}&checkOut=${retStr}&adults=${people}&rooms=1`,
+                icon: "🌐",
+                category: "hotel",
+                description: "Great Asia-Pacific deals",
+            },
+            {
+                label: "Hotels.com",
+                url: `https://www.hotels.com/search.do?q-destination=${destEncoded}&q-check-in=${depStr}&q-check-out=${retStr}&q-rooms=1&q-room-0-adults=${people}`,
+                icon: "🏦",
+                category: "hotel",
+                description: "Collect nights, get free stays",
+            },
+            {
+                label: "Goibibo Hotels",
+                url: `https://www.goibibo.com/hotels/hotels-in-${destSlug}/`,
+                icon: "🏪",
+                category: "hotel",
+                description: "Instant discounts & GoCash",
+            },
+            {
+                label: "Cleartrip",
+                url: `https://www.cleartrip.com/hotels/results/?city=${destEncoded}&adults=2&children=0&rooms=1`,
+                icon: "🔷",
+                category: "hotel",
+                description: "Simple, no-fuss booking",
+            },
+            {
+                label: "Expedia",
+                url: `https://www.expedia.co.in/Hotel-Search?destination=${destEncoded}&adults=${people}&startDate=${depStr}&endDate=${retStr}`,
+                icon: "🌍",
+                category: "hotel",
+                description: "Bundle deals with flights",
             }
         );
     }
@@ -191,6 +254,75 @@ function buildFallbackLinks(context: TravelContext): TravelLink[] {
     );
 
     return links;
+}
+
+// Build context-aware suggestions based on conversation state
+function buildContextualSuggestions(context: TravelContext, lastUserMessage: string): string[] {
+    const msg = lastUserMessage.toLowerCase();
+    const dest = context.destination || "";
+
+    // No destination yet — offer inspiration
+    if (!dest) {
+        if (msg.includes("beach") || msg.includes("sea") || msg.includes("coastal")) {
+            return ["Goa", "Maldives", "Bali", "Thailand", "Phuket", "Andaman Islands"];
+        }
+        if (msg.includes("mountain") || msg.includes("hill") || msg.includes("trek")) {
+            return ["Manali", "Shimla", "Ladakh", "Darjeeling", "Mussoorie", "Coorg"];
+        }
+        if (msg.includes("history") || msg.includes("culture") || msg.includes("heritage")) {
+            return ["Rajasthan", "Jaipur", "Agra", "Varanasi", "Istanbul", "Rome"];
+        }
+        if (msg.includes("honeymoon") || msg.includes("romantic") || msg.includes("couple")) {
+            return ["Maldives", "Bali", "Paris", "Santorini", "Kerala", "Switzerland"];
+        }
+        if (msg.includes("family") || msg.includes("kids") || msg.includes("children")) {
+            return ["Singapore", "Dubai", "Goa", "Ooty", "Nainital", "Coorg"];
+        }
+        if (msg.includes("budget") || msg.includes("cheap") || msg.includes("affordable")) {
+            return ["Goa", "Manali", "Rishikesh", "Hampi", "Mcleod Ganj", "Pushkar"];
+        }
+        // Generic starting point
+        return ["Beach vacation", "Mountain trip", "International travel", "Budget trip India", "Luxury getaway", "Weekend escape"];
+    }
+
+    // Has destination — suggest based on what was discussed
+    if (msg.includes("food") || msg.includes("eat") || msg.includes("restaurant") || msg.includes("cuisine")) {
+        return [`Best restaurants in ${dest}`, `Street food in ${dest}`, `Local dishes to try`, `Fine dining in ${dest}`, `Food tour ${dest}`];
+    }
+    if (msg.includes("hotel") || msg.includes("stay") || msg.includes("accommodation") || msg.includes("hostel")) {
+        return [
+            context.budget === "luxury" ? `Luxury resorts in ${dest}` : `Budget hotels in ${dest}`,
+            `Airbnb in ${dest}`,
+            `Best areas to stay in ${dest}`,
+            `OYO in ${dest}`,
+            `Homestays in ${dest}`,
+        ];
+    }
+    if (msg.includes("flight") || msg.includes("fly") || msg.includes("airline") || msg.includes("ticket")) {
+        return [`Cheapest flights to ${dest}`, `Direct flights to ${dest}`, `Best time to book flights`, `Airport transfer ${dest}`, `Visa requirements`];
+    }
+    if (msg.includes("activit") || msg.includes("things to do") || msg.includes("attraction") || msg.includes("visit")) {
+        return [`Top sights in ${dest}`, `Adventure activities in ${dest}`, `Day trips from ${dest}`, `Hidden gems in ${dest}`, `Tours in ${dest}`];
+    }
+    if (msg.includes("weather") || msg.includes("season") || msg.includes("when") || msg.includes("time")) {
+        return [`Best month to visit ${dest}`, `Monsoon in ${dest}`, `Winter in ${dest}`, `Peak season tips`, `Packing list for ${dest}`];
+    }
+    if (msg.includes("budget") || msg.includes("cost") || msg.includes("cheap") || msg.includes("expensive") || msg.includes("price")) {
+        return [`Budget itinerary ${dest}`, `Average trip cost ${dest}`, `Free things in ${dest}`, `Money saving tips`, `Luxury vs budget ${dest}`];
+    }
+    if (msg.includes("itinerary") || msg.includes("plan") || msg.includes("day") || msg.includes("schedule")) {
+        return [`3-day ${dest} itinerary`, `5-day ${dest} plan`, `Weekend trip ${dest}`, `Must-see in ${dest}`, `Skip the tourist traps`];
+    }
+    if (msg.includes("visa") || msg.includes("passport") || msg.includes("document")) {
+        return [`Visa on arrival for ${dest}`, `Indian passport visa-free`, `Travel insurance needed?`, `Embassy contact`, `Entry requirements`];
+    }
+
+    // Fallback with destination info — suggest next planning steps
+    if (context.budget) {
+        return [`Best ${context.budget} hotels in ${dest}`, `Activities in ${dest}`, `Local food scene`, `Getting around ${dest}`, `Hidden gems`];
+    }
+
+    return [`Things to do in ${dest}`, `Best time to visit`, `Budget breakdown`, `Book hotels`, `Local cuisine guide`];
 }
 
 // Call OpenRouter — tries each model in order, handles errors gracefully
@@ -338,11 +470,9 @@ export async function POST(req: NextRequest) {
             links = buildFallbackLinks(context);
         }
 
-        // Default suggestion chips
+        // Context-aware suggestion chips — shift based on conversation state
         if (suggestions.length === 0) {
-            suggestions = context.destination
-                ? ["💰 Budget options", "👑 Luxury upgrade", "🍽️ Food & restaurants", "📅 Best time to visit", "🏛️ Top attractions"]
-                : ["🏖️ Beach vacation", "🏔️ Mountain trip", "🌍 International travel", "🇮🇳 Explore India"];
+            suggestions = buildContextualSuggestions(context, lastUserMsg.content);
         }
 
         return NextResponse.json({ message: cleanMessage, links, suggestions });
