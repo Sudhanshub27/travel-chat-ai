@@ -4,6 +4,41 @@ import { TravelContext, TravelLink } from "@/types/travel";
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 
+// Sleep helper for retry backoff
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+// Parse retry delay from Google's error details (e.g. "27s" -> 27000ms)
+function parseRetryDelay(err: unknown): number {
+    try {
+        const msg = String((err as { message?: string })?.message || "");
+        const secondsMatch = msg.match(/"retryDelay":"(\d+)s"/);
+        if (secondsMatch) return parseInt(secondsMatch[1]) * 1000 + 500; // add 500ms buffer
+    } catch { /* ignore */ }
+    return 0;
+}
+
+// Retry wrapper for rate-limit (429) errors — uses Google's suggested retryDelay
+async function withRetry<T>(fn: () => Promise<T>, maxRetries = 3): Promise<T> {
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+            return await fn();
+        } catch (err: unknown) {
+            const error = err as { status?: number; message?: string };
+            const is429 = error?.status === 429 || String(error?.message).includes("429");
+            if (is429 && attempt < maxRetries) {
+                // Use Google's suggested retryDelay, or fall back to exponential backoff
+                const googleDelay = parseRetryDelay(err);
+                const delay = googleDelay > 0 ? googleDelay : Math.pow(2, attempt) * 2000;
+                console.warn(`Rate limited (429). Retrying in ${delay}ms (attempt ${attempt}/${maxRetries})`);
+                await sleep(delay);
+                continue;
+            }
+            throw err;
+        }
+    }
+    throw new Error("Max retries exceeded");
+}
+
 const SYSTEM_PROMPT = `You are WanderAI, a friendly and knowledgeable AI travel companion. Your goal is to help users plan their perfect trip through a natural, conversational experience.
 
 ## Your Personality
@@ -189,8 +224,9 @@ export async function POST(req: NextRequest) {
             context: TravelContext;
         };
 
+        // gemini-1.5-flash has a generous free tier: 1500 req/day, 15 RPM
         const model = genAI.getGenerativeModel({
-            model: "gemini-2.0-flash",
+            model: "gemini-1.5-flash",
             systemInstruction: SYSTEM_PROMPT,
         });
 
@@ -229,7 +265,7 @@ export async function POST(req: NextRequest) {
             : "";
 
         const chat = model.startChat({ history });
-        const result = await chat.sendMessage(contextStr + lastMessage.content);
+        const result = await withRetry(() => chat.sendMessage(contextStr + lastMessage.content));
         const responseText = result.response.text();
 
         // Parse JSON links if AI provided them
@@ -275,11 +311,16 @@ export async function POST(req: NextRequest) {
         }
 
         return NextResponse.json({ message: cleanMessage, links, suggestions });
-    } catch (error) {
+    } catch (err: unknown) {
+        const error = err as { status?: number; message?: string };
         console.error("Chat API error:", error);
+        const is429 = error?.status === 429 || String(error?.message).includes("429");
+        const message = is429
+            ? "⏳ WanderAI is getting a lot of requests right now! Please wait a moment and try again."
+            : "I'm having a little trouble right now. Please try again! 🙏";
         return NextResponse.json(
             {
-                message: "I'm having a little trouble right now. Please try again! 🙏",
+                message,
                 links: [],
                 suggestions: ["Try again", "Start fresh"],
             },
