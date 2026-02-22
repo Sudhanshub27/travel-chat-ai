@@ -194,24 +194,45 @@ export async function POST(req: NextRequest) {
             systemInstruction: SYSTEM_PROMPT,
         });
 
-        // Build chat history (exclude last user message, that goes as prompt)
-        const history = messages.slice(0, -1).map(m => ({
+        // The last message is the current user prompt — send it separately
+        const lastMessage = messages[messages.length - 1];
+
+        // Build valid Gemini history from all messages EXCEPT the last one.
+        // Rules:
+        //  1. Map roles: "user" -> "user", anything else -> "model"
+        //  2. Strip ALL leading "model" turns (Gemini requires history to START with "user")
+        //  3. Ensure turns alternate correctly (drop duplicates of same role)
+        const rawPairs = messages.slice(0, -1).map(m => ({
             role: m.role === "user" ? "user" as const : "model" as const,
             parts: [{ text: m.content }],
         }));
 
-        const lastMessage = messages[messages.length - 1];
+        // Drop leading model messages
+        let start = 0;
+        while (start < rawPairs.length && rawPairs[start].role === "model") {
+            start++;
+        }
+        const trimmed = rawPairs.slice(start);
 
-        // Inject context into the prompt if we have it
-        const contextStr = Object.keys(context).length > 1
-            ? `\n\n[Current travel context: ${JSON.stringify(context)}]\n\n`
+        // Ensure strictly alternating turns (user, model, user, model...)
+        const history: Array<{ role: "user" | "model"; parts: Array<{ text: string }> }> = [];
+        for (const turn of trimmed) {
+            if (history.length === 0 || history[history.length - 1].role !== turn.role) {
+                history.push(turn);
+            }
+            // If same role as last, skip to maintain alternation
+        }
+
+        // Inject context summary into the user prompt for better AI awareness
+        const contextStr = context.destination || context.budget || context.people
+            ? `[Trip so far: destination=${context.destination || "unknown"}, from=${context.origin || "unknown"}, people=${context.people || "unknown"}, budget=${context.budget || "unknown"}, duration=${context.duration || "unknown"}]\n\n`
             : "";
 
         const chat = model.startChat({ history });
         const result = await chat.sendMessage(contextStr + lastMessage.content);
         const responseText = result.response.text();
 
-        // Parse JSON links if present in response
+        // Parse JSON links if AI provided them
         let links: TravelLink[] = [];
         let suggestions: string[] = [];
         let cleanMessage = responseText;
@@ -220,39 +241,48 @@ export async function POST(req: NextRequest) {
         if (jsonMatch) {
             try {
                 const parsed = JSON.parse(jsonMatch[1]);
-                if (parsed.links) links = parsed.links;
-                if (parsed.suggestions) suggestions = parsed.suggestions;
+                if (parsed.links && Array.isArray(parsed.links)) links = parsed.links;
+                if (parsed.suggestions && Array.isArray(parsed.suggestions)) suggestions = parsed.suggestions;
                 cleanMessage = responseText.replace(/```json\n?[\s\S]*?\n?```/g, "").trim();
             } catch {
-                // If JSON parse fails, try to build links from context
+                // JSON parse failed — continue without parsed links
             }
         }
 
-        // Always generate search links if we have a destination
+        // Programmatically build links if AI didn't provide them but we have a destination
         if (context.destination && links.length === 0) {
             links = buildSearchUrls(context);
         }
 
-        // Default suggestions if none provided
-        if (suggestions.length === 0 && context.phase === "suggesting") {
-            suggestions = [
-                "Show budget options",
-                "Show luxury options",
-                "What to eat there?",
-                "Best time to visit",
-                "Local tips & culture",
-            ];
+        // Provide default follow-up chips
+        if (suggestions.length === 0) {
+            if (context.destination) {
+                suggestions = [
+                    "Show budget options 💰",
+                    "Show luxury options 👑",
+                    "What to eat there? 🍽️",
+                    "Best time to visit 📅",
+                    "Local tips & culture 🏛️",
+                ];
+            } else {
+                suggestions = [
+                    "🏖️ Beach vacation",
+                    "🏔️ Mountain adventure",
+                    "🌍 International trip",
+                    "🇮🇳 Explore India",
+                ];
+            }
         }
 
-        return NextResponse.json({
-            message: cleanMessage,
-            links,
-            suggestions,
-        });
+        return NextResponse.json({ message: cleanMessage, links, suggestions });
     } catch (error) {
         console.error("Chat API error:", error);
         return NextResponse.json(
-            { message: "I'm having trouble connecting right now. Please try again in a moment! 🙏", links: [], suggestions: [] },
+            {
+                message: "I'm having a little trouble right now. Please try again! 🙏",
+                links: [],
+                suggestions: ["Try again", "Start fresh"],
+            },
             { status: 200 }
         );
     }
