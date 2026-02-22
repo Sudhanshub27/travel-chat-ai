@@ -1,45 +1,19 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
 import { NextRequest, NextResponse } from "next/server";
 import { TravelContext, TravelLink } from "@/types/travel";
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
+const OPENROUTER_BASE = "https://openrouter.ai/api/v1/chat/completions";
 
-// Sleep helper for retry backoff
-const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+// Primary model: Gemini 2.5 Flash via OpenRouter
+// Fallbacks for rate-limit or unavailability
+const FREE_MODELS = [
+    "google/gemini-2.5-flash",                   // Primary — Gemini 2.5 Flash
+    "google/gemini-2.0-flash-exp:free",           // Fallback 1 — Gemini 2.0 Flash (free)
+    "meta-llama/llama-3.3-70b-instruct:free",     // Fallback 2 — Llama 3.3 70B
+    "mistralai/mistral-7b-instruct:free",          // Fallback 3 — Mistral 7B
+];
 
-// Parse retry delay from Google's error details (e.g. "27s" -> 27000ms)
-function parseRetryDelay(err: unknown): number {
-    try {
-        const msg = String((err as { message?: string })?.message || "");
-        const secondsMatch = msg.match(/"retryDelay":"(\d+)s"/);
-        if (secondsMatch) return parseInt(secondsMatch[1]) * 1000 + 500; // add 500ms buffer
-    } catch { /* ignore */ }
-    return 0;
-}
 
-// Retry wrapper for rate-limit (429) errors — uses Google's suggested retryDelay
-async function withRetry<T>(fn: () => Promise<T>, maxRetries = 3): Promise<T> {
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-        try {
-            return await fn();
-        } catch (err: unknown) {
-            const error = err as { status?: number; message?: string };
-            const is429 = error?.status === 429 || String(error?.message).includes("429");
-            if (is429 && attempt < maxRetries) {
-                // Use Google's suggested retryDelay, or fall back to exponential backoff
-                const googleDelay = parseRetryDelay(err);
-                const delay = googleDelay > 0 ? googleDelay : Math.pow(2, attempt) * 2000;
-                console.warn(`Rate limited (429). Retrying in ${delay}ms (attempt ${attempt}/${maxRetries})`);
-                await sleep(delay);
-                continue;
-            }
-            throw err;
-        }
-    }
-    throw new Error("Max retries exceeded");
-}
-
-const SYSTEM_PROMPT = `You are WanderAI, a friendly and knowledgeable AI travel companion. Your goal is to help users plan their perfect trip through a natural, conversational experience.
+const SYSTEM_PROMPT = `You are WanderAI, a friendly and knowledgeable AI travel companion. Your goal is to help users plan their perfect trip through natural conversation.
 
 ## Your Personality
 - Warm, enthusiastic, and encouraging
@@ -49,226 +23,300 @@ const SYSTEM_PROMPT = `You are WanderAI, a friendly and knowledgeable AI travel 
 
 ## Conversation Flow
 Guide users through gathering these details naturally (not all at once):
-1. **Destination** - Where do they want to go?
-2. **Origin** - Where are they traveling from?
-3. **Dates** - When and for how long?
-4. **Group size** - How many people?
-5. **Budget** - Budget / Mid-range / Luxury
-6. **Travel style** - Adventure, relaxation, culture, food, family, honeymoon, etc.
+1. Destination - Where do they want to go?
+2. Origin - Where are they traveling from?
+3. Dates - When and for how long?
+4. Group size - How many people?
+5. Budget - Budget / Mid-range / Luxury
+6. Travel style - Adventure, relaxation, culture, food, family, honeymoon, etc.
 
-## When Suggesting (CRITICAL - JSON FORMAT)
-When you have enough info to make suggestions, you MUST include booking links in this exact JSON structure at the END of your message:
+## When Suggesting
+When you have enough info (at minimum a destination), include booking links in this EXACT JSON block at the END of your message:
 
 \`\`\`json
 {
   "links": [
     {
       "label": "Google Flights",
-      "url": "https://www.google.com/travel/flights/search?tfs=...",
+      "url": "https://www.google.com/travel/flights/search?q=flights+from+Delhi+to+Goa",
       "icon": "✈️",
       "category": "flight",
-      "description": "Best flight deals"
+      "description": "Compare all airlines"
     },
     {
-      "label": "Booking.com Hotels",
-      "url": "https://www.booking.com/searchresults.html?ss=DESTINATION",
+      "label": "Hotels on Booking.com",
+      "url": "https://www.booking.com/searchresults.html?ss=Goa&group_adults=2",
       "icon": "🏨",
       "category": "hotel",
       "description": "Top-rated hotels"
+    },
+    {
+      "label": "Airbnb Stays",
+      "url": "https://www.airbnb.co.in/s/Goa/homes?adults=2",
+      "icon": "🏠",
+      "category": "stay",
+      "description": "Unique local stays"
+    },
+    {
+      "label": "Activities on Viator",
+      "url": "https://www.viator.com/search/Goa",
+      "icon": "🎯",
+      "category": "activity",
+      "description": "Tours and experiences"
     }
   ],
-  "suggestions": ["Tell me more about activities", "Show luxury options", "What about budget stays?"]
+  "suggestions": ["Show budget homestays", "Best beaches in Goa", "What to eat in Goa?"]
 }
 \`\`\`
 
-## Link Generation Rules
-Build REAL, functional search URLs:
-
-### Flights:
-- Google Flights: https://www.google.com/travel/flights/search?tfs=CBwQAhoeEgoyMDI1LTEyLTAxagcIARIDREVMcgcIARIDQk9N (use actual IATA codes)
-- Skyscanner: https://www.skyscanner.co.in/transport/flights/DEL/BOM/251201/ (use actual codes and dates YYYYMMDD)
-- MakeMyTrip: https://www.makemytrip.com/flights/international/delhi-to-dubai/ (use city names)
-
-### Hotels:
-- Booking.com: https://www.booking.com/searchresults.html?ss=CITY&checkin=YYYY-MM-DD&checkout=YYYY-MM-DD&group_adults=2
-- Hotels.com: https://www.hotels.com/search.do?q-destination=CITY
-- MakeMyTrip Hotels: https://www.makemytrip.com/hotels/hotel-listing/?checkin=YYYYMMDD&city=CITY
-
-### Stays/Unique:
-- Airbnb: https://www.airbnb.co.in/s/CITY/homes?adults=2&checkin=YYYY-MM-DD&checkout=YYYY-MM-DD
-- StayVista: https://www.stayvista.com/villas-in-CITY
-- Club Mahindra: https://www.clubmahindra.com/resort/search?destination=CITY
-
-### Activities:
-- Viator: https://www.viator.com/CITY/d1-ttd.html
-- GetYourGuide: https://www.getyourguide.com/CITY-l1/
+## URL Rules
+Always use real city names in URLs:
+- Flights: https://www.google.com/travel/flights/search?q=flights+from+ORIGIN+to+DESTINATION
+- MakeMyTrip: https://www.makemytrip.com/flights/international/ORIGIN-to-DESTINATION/
+- Booking.com: https://www.booking.com/searchresults.html?ss=CITY&group_adults=N
+- Airbnb: https://www.airbnb.co.in/s/CITY/homes?adults=N
+- Viator: https://www.viator.com/search/CITY
+- Google Maps: https://www.google.com/maps/search/things+to+do+in+CITY
 
 ## Budget Guidance
-- **Budget**: Focus on hostels, budget airlines, street food districts, free attractions
-- **Mid-range**: 3-4 star hotels, standard flights, mix of dining options
-- **Luxury**: 5-star resorts, business/first class, private tours, fine dining
+- Budget: Hostels, budget airlines, street food, free attractions
+- Mid-range: 3-4 star hotels, standard flights, mix of options
+- Luxury: 5-star resorts, business class, private tours, fine dining
 
-## Tips
-- Always personalize suggestions to their specific travel style
-- Mention 2-3 must-visit spots for the destination
-- For domestic India travel, prioritize Indian platforms (MakeMyTrip, Cleartrip, Goibibo)
-- For international, include both global and Indian platforms
-- Suggest the best travel months and local tips
+## India Tips
+- For domestic India: prioritize MakeMyTrip, Cleartrip, Goibibo
+- Popular spots: Goa, Kerala, Rajasthan, Manali, Ladakh, Coorg, Andaman
 
-Remember: ALWAYS end suggestions with the JSON block containing links and follow-up suggestions.`;
+IMPORTANT: Always end with the JSON block when you have a destination to suggest.`;
 
-function buildSearchUrls(context: TravelContext): TravelLink[] {
-    const links: TravelLink[] = [];
-    const dest = context.destination || "destination";
+// Build fallback booking links from travel context
+function buildFallbackLinks(context: TravelContext): TravelLink[] {
+    const dest = context.destination || "";
+    if (!dest) return [];
+
     const destEncoded = encodeURIComponent(dest);
+    const destSlug = dest.toLowerCase().replace(/\s+/g, "-");
     const origin = context.origin || "Delhi";
+    const originSlug = origin.toLowerCase().replace(/\s+/g, "-");
     const people = context.people || 2;
-    const budget = context.budget || "mid-range";
 
-    // Default dates if not provided
     const today = new Date();
-    const departDate = context.departureDate
-        ? new Date(context.departureDate)
-        : new Date(today.setDate(today.getDate() + 30));
-    const returnDate = context.returnDate
-        ? new Date(context.returnDate)
-        : new Date(departDate.getTime() + 7 * 24 * 60 * 60 * 1000);
+    const dep = new Date(today.setDate(today.getDate() + 30));
+    const ret = new Date(dep.getTime() + 7 * 24 * 60 * 60 * 1000);
+    const depStr = dep.toISOString().split("T")[0];
+    const retStr = ret.toISOString().split("T")[0];
 
-    const depStr = departDate.toISOString().split('T')[0];
-    const retStr = returnDate.toISOString().split('T')[0];
-    const depMmt = depStr.replace(/-/g, '');
-    const retMmt = retStr.replace(/-/g, '');
+    const links: TravelLink[] = [
+        {
+            label: "Search Flights on Google",
+            url: `https://www.google.com/travel/flights/search?q=flights+from+${encodeURIComponent(origin)}+to+${destEncoded}`,
+            icon: "✈️",
+            category: "flight",
+            description: "Compare all airlines instantly",
+        },
+        {
+            label: "MakeMyTrip Flights",
+            url: `https://www.makemytrip.com/flights/international/${originSlug}-to-${destSlug}/`,
+            icon: "🛫",
+            category: "flight",
+            description: "Best Indian airline deals",
+        },
+        {
+            label: "Skyscanner",
+            url: `https://www.skyscanner.co.in/transport/flights/${origin.substring(0, 3).toUpperCase()}/${dest.substring(0, 3).toUpperCase()}/`,
+            icon: "🔍",
+            category: "flight",
+            description: "Compare cheapest fares",
+        },
+    ];
 
-    // Flights
-    links.push({
-        label: "Search Flights on Google",
-        url: `https://www.google.com/travel/flights/search?tfs=CBwQARoeEgoyMDI1LTEyLTAxagcIARIDREVMcgcIARIDQk9N&curr=INR`,
-        icon: "✈️",
-        category: "flight",
-        description: "Compare all airlines"
-    });
-
-    links.push({
-        label: "MakeMyTrip Flights",
-        url: `https://www.makemytrip.com/flights/international/${origin.toLowerCase().replace(/ /g, '-')}-to-${dest.toLowerCase().replace(/ /g, '-')}/?itinerary=ONE&tripType=O&paxType=A-${people}_C-0_I-0&srcCity=${origin}&dstCity=${dest}&depDate=${depStr}&preferredclass=E`,
-        icon: "🛫",
-        category: "flight",
-        description: "Best Indian airline deals"
-    });
-
-    links.push({
-        label: "Skyscanner Flights",
-        url: `https://www.skyscanner.co.in/transport/flights/${origin.substring(0, 3).toUpperCase()}/${dest.substring(0, 3).toUpperCase()}/${depMmt}/`,
-        icon: "🔍",
-        category: "flight",
-        description: "Compare cheapest fares"
-    });
-
-    // Hotels based on budget
-    if (budget === "luxury") {
-        links.push({
-            label: "Luxury Hotels on Booking.com",
-            url: `https://www.booking.com/searchresults.html?ss=${destEncoded}&checkin=${depStr}&checkout=${retStr}&group_adults=${people}&nflt=class%3D5`,
-            icon: "🏰",
-            category: "hotel",
-            description: "5-star luxury properties"
-        });
-        links.push({
-            label: "Taj Hotels",
-            url: `https://www.tajhotels.com/en-in/find-a-hotel/?destination=${destEncoded}`,
-            icon: "👑",
-            category: "hotel",
-            description: "Iconic luxury experience"
-        });
+    if (context.budget === "luxury") {
+        links.push(
+            {
+                label: "Luxury Hotels – Booking.com",
+                url: `https://www.booking.com/searchresults.html?ss=${destEncoded}&checkin=${depStr}&checkout=${retStr}&group_adults=${people}&nflt=class%3D5`,
+                icon: "🏰",
+                category: "hotel",
+                description: "5-star luxury properties",
+            },
+            {
+                label: "Taj Hotels",
+                url: `https://www.tajhotels.com/en-in/find-a-hotel/?destination=${destEncoded}`,
+                icon: "👑",
+                category: "hotel",
+                description: "Iconic Indian luxury",
+            }
+        );
     } else {
-        links.push({
-            label: "Hotels on Booking.com",
-            url: `https://www.booking.com/searchresults.html?ss=${destEncoded}&checkin=${depStr}&checkout=${retStr}&group_adults=${people}`,
-            icon: "🏨",
-            category: "hotel",
-            description: "Wide range of options"
-        });
+        links.push(
+            {
+                label: "Hotels on Booking.com",
+                url: `https://www.booking.com/searchresults.html?ss=${destEncoded}&checkin=${depStr}&checkout=${retStr}&group_adults=${people}`,
+                icon: "🏨",
+                category: "hotel",
+                description: "Wide range of options",
+            },
+            {
+                label: "MakeMyTrip Hotels",
+                url: `https://www.makemytrip.com/hotels/hotel-listing/?city=${destEncoded}`,
+                icon: "🏩",
+                category: "hotel",
+                description: "Trusted Indian hotel booking",
+            }
+        );
     }
 
-    links.push({
-        label: "Airbnb Stays",
-        url: `https://www.airbnb.co.in/s/${destEncoded}/homes?adults=${people}&checkin=${depStr}&checkout=${retStr}`,
-        icon: "🏠",
-        category: "stay",
-        description: "Unique local stays"
-    });
-
-    links.push({
-        label: "Activities on Viator",
-        url: `https://www.viator.com/search/${destEncoded}`,
-        icon: "🎯",
-        category: "activity",
-        description: "Tours & experiences"
-    });
-
-    links.push({
-        label: "Explore on Google Maps",
-        url: `https://www.google.com/maps/search/things+to+do+in+${destEncoded}`,
-        icon: "🗺️",
-        category: "map",
-        description: "Local hotspots & navigation"
-    });
+    links.push(
+        {
+            label: "Airbnb Stays",
+            url: `https://www.airbnb.co.in/s/${destEncoded}/homes?adults=${people}&checkin=${depStr}&checkout=${retStr}`,
+            icon: "🏠",
+            category: "stay",
+            description: "Unique local stays and villas",
+        },
+        {
+            label: "Activities on Viator",
+            url: `https://www.viator.com/search/${destEncoded}`,
+            icon: "🎯",
+            category: "activity",
+            description: "Tours, experiences and day trips",
+        },
+        {
+            label: "Explore on Google Maps",
+            url: `https://www.google.com/maps/search/things+to+do+in+${destEncoded}`,
+            icon: "🗺️",
+            category: "map",
+            description: "Local hotspots and navigation",
+        }
+    );
 
     return links;
 }
 
+// Call OpenRouter — tries each model in order, handles errors gracefully
+async function callOpenRouter(
+    messages: Array<{ role: string; content: string }>,
+    modelIndex = 0
+): Promise<string> {
+    const apiKey = process.env.OPENROUTER_API_KEY;
+    if (!apiKey) throw new Error("OPENROUTER_API_KEY not set in .env.local");
+
+    if (modelIndex >= FREE_MODELS.length) {
+        throw new Error("All models exhausted — please try again later");
+    }
+
+    const model = FREE_MODELS[modelIndex];
+    console.log(`[WanderAI] Trying model ${modelIndex + 1}/${FREE_MODELS.length}: ${model}`);
+
+    const resp = await fetch(OPENROUTER_BASE, {
+        method: "POST",
+        headers: {
+            Authorization: `Bearer ${apiKey}`,
+            "Content-Type": "application/json",
+            "HTTP-Referer": "https://wanderai.vercel.app",
+            "X-Title": "WanderAI Travel Assistant",
+        },
+        body: JSON.stringify({
+            model,
+            messages,
+            max_tokens: 1200,
+            temperature: 0.7,
+        }),
+    });
+
+    if (!resp.ok) {
+        const errBody = await resp.text();
+        console.warn(`[WanderAI] ${model} failed (HTTP ${resp.status}): ${errBody.slice(0, 200)}`);
+
+        const isSystemPromptError =
+            errBody.includes("Developer instruction is not enabled") ||
+            errBody.includes("system role") ||
+            errBody.includes("systemInstruction") ||
+            (resp.status === 400 && errBody.includes("not supported"));
+
+        const isInvalidModelError =
+            errBody.includes("not a valid model") ||
+            errBody.includes("model not found") ||
+            errBody.includes("No endpoints found");
+
+        const shouldFallback =
+            resp.status === 429 ||
+            resp.status === 503 ||
+            resp.status === 502 ||
+            isInvalidModelError ||
+            (resp.status === 400 && isSystemPromptError);
+
+        if (shouldFallback) {
+            if (isSystemPromptError) {
+                console.log(`[WanderAI] System prompt not supported — injecting as user message`);
+                const noSystem = messages.filter((m) => m.role !== "system");
+                if (noSystem.length > 0 && noSystem[0].role === "user") {
+                    noSystem[0] = {
+                        role: "user",
+                        content: `[You are WanderAI, a helpful travel assistant. Suggest real booking links.]\n\n${noSystem[0].content}`,
+                    };
+                }
+                return callOpenRouter(noSystem, modelIndex + 1);
+            }
+            return callOpenRouter(messages, modelIndex + 1);
+        }
+
+        throw new Error(`OpenRouter error ${resp.status}: ${errBody.slice(0, 300)}`);
+    }
+
+    const data = await resp.json();
+    const content = data?.choices?.[0]?.message?.content;
+    if (!content) throw new Error("Empty response from OpenRouter");
+
+    console.log(`[WanderAI] Success with: ${model} ✓`);
+    return content as string;
+}
+
 export async function POST(req: NextRequest) {
     try {
-        const { messages, context } = await req.json() as {
+        const { messages, context } = (await req.json()) as {
             messages: Array<{ role: string; content: string }>;
             context: TravelContext;
         };
 
-        // gemini-1.5-flash has a generous free tier: 1500 req/day, 15 RPM
-        const model = genAI.getGenerativeModel({
-            model: "gemini-1.5-flash",
-            systemInstruction: SYSTEM_PROMPT,
-        });
+        const lastUserMsg = messages[messages.length - 1];
 
-        // The last message is the current user prompt — send it separately
-        const lastMessage = messages[messages.length - 1];
-
-        // Build valid Gemini history from all messages EXCEPT the last one.
-        // Rules:
-        //  1. Map roles: "user" -> "user", anything else -> "model"
-        //  2. Strip ALL leading "model" turns (Gemini requires history to START with "user")
-        //  3. Ensure turns alternate correctly (drop duplicates of same role)
-        const rawPairs = messages.slice(0, -1).map(m => ({
-            role: m.role === "user" ? "user" as const : "model" as const,
-            parts: [{ text: m.content }],
+        // Build conversation history — skip static welcome, enforce alternating turns
+        const rawHistory = messages.slice(0, -1).map((m) => ({
+            role: m.role === "user" ? "user" : "assistant",
+            content: m.content,
         }));
 
-        // Drop leading model messages
+        // Drop leading assistant messages (e.g. static welcome)
         let start = 0;
-        while (start < rawPairs.length && rawPairs[start].role === "model") {
+        while (start < rawHistory.length && rawHistory[start].role === "assistant") {
             start++;
         }
-        const trimmed = rawPairs.slice(start);
+        const trimmed = rawHistory.slice(start);
 
-        // Ensure strictly alternating turns (user, model, user, model...)
-        const history: Array<{ role: "user" | "model"; parts: Array<{ text: string }> }> = [];
+        // Enforce strictly alternating turns
+        const history: Array<{ role: string; content: string }> = [];
         for (const turn of trimmed) {
             if (history.length === 0 || history[history.length - 1].role !== turn.role) {
                 history.push(turn);
             }
-            // If same role as last, skip to maintain alternation
         }
 
-        // Inject context summary into the user prompt for better AI awareness
-        const contextStr = context.destination || context.budget || context.people
-            ? `[Trip so far: destination=${context.destination || "unknown"}, from=${context.origin || "unknown"}, people=${context.people || "unknown"}, budget=${context.budget || "unknown"}, duration=${context.duration || "unknown"}]\n\n`
-            : "";
+        // Inject travel context as a hint
+        const contextHint =
+            context.destination || context.budget || context.people
+                ? `[Trip context: destination=${context.destination || "?"}, from=${context.origin || "?"}, people=${context.people || "?"}, budget=${context.budget || "?"}, duration=${context.duration || "?"}]\n\n`
+                : "";
 
-        const chat = model.startChat({ history });
-        const result = await withRetry(() => chat.sendMessage(contextStr + lastMessage.content));
-        const responseText = result.response.text();
+        const openRouterMessages = [
+            { role: "system", content: SYSTEM_PROMPT },
+            ...history,
+            { role: "user", content: contextHint + lastUserMsg.content },
+        ];
 
-        // Parse JSON links if AI provided them
+        const responseText = await callOpenRouter(openRouterMessages);
+
+        // Parse AI-provided JSON links block
         let links: TravelLink[] = [];
         let suggestions: string[] = [];
         let cleanMessage = responseText;
@@ -281,46 +329,33 @@ export async function POST(req: NextRequest) {
                 if (parsed.suggestions && Array.isArray(parsed.suggestions)) suggestions = parsed.suggestions;
                 cleanMessage = responseText.replace(/```json\n?[\s\S]*?\n?```/g, "").trim();
             } catch {
-                // JSON parse failed — continue without parsed links
+                // JSON parse failed — use fallback links below
             }
         }
 
-        // Programmatically build links if AI didn't provide them but we have a destination
+        // Build programmatic links if AI didn't provide them
         if (context.destination && links.length === 0) {
-            links = buildSearchUrls(context);
+            links = buildFallbackLinks(context);
         }
 
-        // Provide default follow-up chips
+        // Default suggestion chips
         if (suggestions.length === 0) {
-            if (context.destination) {
-                suggestions = [
-                    "Show budget options 💰",
-                    "Show luxury options 👑",
-                    "What to eat there? 🍽️",
-                    "Best time to visit 📅",
-                    "Local tips & culture 🏛️",
-                ];
-            } else {
-                suggestions = [
-                    "🏖️ Beach vacation",
-                    "🏔️ Mountain adventure",
-                    "🌍 International trip",
-                    "🇮🇳 Explore India",
-                ];
-            }
+            suggestions = context.destination
+                ? ["💰 Budget options", "👑 Luxury upgrade", "🍽️ Food & restaurants", "📅 Best time to visit", "🏛️ Top attractions"]
+                : ["🏖️ Beach vacation", "🏔️ Mountain trip", "🌍 International travel", "🇮🇳 Explore India"];
         }
 
         return NextResponse.json({ message: cleanMessage, links, suggestions });
-    } catch (err: unknown) {
-        const error = err as { status?: number; message?: string };
-        console.error("Chat API error:", error);
-        const is429 = error?.status === 429 || String(error?.message).includes("429");
-        const message = is429
-            ? "⏳ WanderAI is getting a lot of requests right now! Please wait a moment and try again."
-            : "I'm having a little trouble right now. Please try again! 🙏";
+    } catch (err) {
+        console.error("[WanderAI] Chat API error:", err);
+        const msg = String((err as Error)?.message || "");
+        const isRateLimit = msg.includes("429") || msg.includes("Too Many Requests");
+
         return NextResponse.json(
             {
-                message,
+                message: isRateLimit
+                    ? "⏳ Too many requests right now — please wait a moment and try again!"
+                    : "I'm having trouble connecting. Please try again! 🙏",
                 links: [],
                 suggestions: ["Try again", "Start fresh"],
             },
