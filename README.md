@@ -1,98 +1,91 @@
-# ✈️ WanderAI — AI-Powered Travel Chat
+# WanderAI — AI Travel Planning Assistant
 
-> Plan your dream trip through natural conversation. Get flights, hotels, and stay recommendations with real booking links — all in one place.
+An AI-powered travel assistant that helps you plan complete trips through natural conversation. Powered by **Gemini 2.5 Flash** via OpenRouter.
 
-![WanderAI](https://img.shields.io/badge/WanderAI-Travel%20AI-blue?style=for-the-badge&logo=airplane)
-![Next.js](https://img.shields.io/badge/Next.js-15-black?style=for-the-badge&logo=next.js)
-![Gemini](https://img.shields.io/badge/Gemini-AI-4285F4?style=for-the-badge&logo=google)
+## Features
 
-## 🌍 What is WanderAI?
+- **Conversational trip planning** — describe your trip in plain language
+- **Real booking links** — flights, hotels, and activities with direct links to 8+ booking sites
+- **Context-aware suggestions** — chip suggestions evolve as the conversation progresses
+- **Light & dark theme** — toggle in the nav, persisted across sessions
+- **Voice input & output** — speak your message, hear responses
+- **Multi-model fallback** — Gemini 2.5 Flash → Gemini 2.0 Flash → Llama 3.3 70B → Mistral 7B
+- **Scroll animations** — smooth reveal animations on the landing page
 
-WanderAI is an **all-in-one travel planning chat** where you simply talk (or type!) about your travel dreams. The AI gathers your preferences and instantly generates:
+## Booking Sites Supported
 
-- ✈️ **Flight links** — Google Flights, MakeMyTrip, Skyscanner
-- 🏨 **Hotel suggestions** — Booking.com, Hotels.com, MakeMyTrip Hotels
-- 🏠 **Unique stays** — Airbnb, StayVista, Club Mahindra
-- 🎯 **Activities** — Viator, GetYourGuide
-- 🗺️ **Itinerary ideas** — Personalized based on budget & style
+| Category | Sites |
+|---|---|
+| Flights | Google Flights, MakeMyTrip, Skyscanner, Goibibo |
+| Hotels | Booking.com, MakeMyTrip, OYO, Agoda, Hotels.com, Goibibo, Cleartrip, Expedia |
+| Stays | Airbnb |
+| Activities | Viator |
+| Maps | Google Maps |
 
-## 🚀 Features
+## Getting Started
 
-- 💬 **Conversational AI** — Natural chat interface powered by Google Gemini
-- 🎤 **Voice Input** — Speak your travel plans (browser-based, no extra setup)
-- 🔊 **Voice Responses** — AI reads responses aloud (toggle on/off)
-- 🔗 **Real Booking Links** — Direct links to actual booking sites
-- 💰 **Budget Aware** — Budget, Mid-range, or Luxury recommendations
-- 📍 **Context Tracking** — Remembers destination, dates, people count throughout
-- 🌙 **Beautiful Dark UI** — Glassmorphism design with animations
+### 1. Clone and install
 
-## 🛠️ Tech Stack
-
-| Layer | Technology |
-|-------|-----------|
-| Frontend | Next.js 15 + TypeScript |
-| Styling | Tailwind CSS + Custom CSS |
-| AI | Google Gemini 2.0 Flash |
-| Voice | Web Speech API (browser native) |
-| Deployment | Vercel (recommended) |
-
-## ⚡ Quick Start
-
-### 1. Clone & Install
 ```bash
-git clone https://github.com/YOUR_USERNAME/travel-chat-ai.git
+git clone https://github.com/Sudhanshub27/travel-chat-ai.git
 cd travel-chat-ai
 npm install
 ```
 
-### 2. Get Gemini API Key
-1. Go to [Google AI Studio](https://aistudio.google.com/app/apikey)
-2. Click **Get API key** → **Create API key**
-3. Copy your key
+### 2. Set up environment
 
-### 3. Set Environment Variable
 Create `.env.local` in the project root:
+
 ```env
-GEMINI_API_KEY=your_actual_gemini_api_key_here
+OPENROUTER_API_KEY=your_openrouter_api_key_here
 ```
 
-### 4. Run Development Server
+Get your free API key at [openrouter.ai](https://openrouter.ai).
+
+### 3. Run locally
+
 ```bash
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) 🎉
+Open [http://localhost:3000](http://localhost:3000).
 
-## 🌐 Deploy to Vercel
+## Tech Stack
 
-```bash
-npm install -g vercel
-vercel --prod
+- **Framework**: Next.js 16 (App Router, Turbopack)
+- **Language**: TypeScript
+- **Styling**: Vanilla CSS with CSS custom properties (light/dark themes)
+- **AI**: OpenRouter API → Gemini 2.5 Flash
+- **Icons**: Lucide React
+- **Fonts**: Inter (Google Fonts)
+
+## Project Structure
+
+```
+travel-chat-ai/
+├── app/
+│   ├── api/chat/route.ts    # OpenRouter API integration + fallback chain
+│   ├── globals.css          # Design system (light/dark themes, animations)
+│   ├── layout.tsx
+│   └── page.tsx             # Landing page with scroll animations
+├── components/
+│   ├── ChatInterface.tsx    # Main chat UI
+│   ├── ChatMessage.tsx      # Message bubbles + formatting
+│   └── LinkCards.tsx        # Booking link cards
+└── types/
+    └── travel.ts            # TypeScript types
 ```
 
-Add `GEMINI_API_KEY` in Vercel dashboard under **Settings → Environment Variables**.
+## Landing Page Sections
 
-## 📱 How to Use
+1. **Hero** — two-column layout with live chat preview cycling destinations
+2. **Destinations** — auto-scrolling strip of popular travel spots
+3. **Features** — 6-card grid covering what WanderAI does
+4. **How it works** — 3-step guide
+5. **CTA Banner** — call to action with gradient background
 
-1. **Open the app** and click "Start Planning for Free"
-2. **Tell WanderAI** where you want to go (type or use 🎤 voice)
-3. **Answer questions** about dates, budget, number of people, travel style
-4. **Get recommendations** with clickable links to book directly
-5. **Use quick chips** for fast replies or follow-up questions
+## Environment Variables
 
-## 🗺️ Roadmap
-
-- [ ] User authentication & saved trips
-- [ ] In-app itinerary builder
-- [ ] Price comparison integration
-- [ ] Multi-language support
-- [ ] Mobile app (React Native)
-- [ ] Direct booking integration
-
-## 📄 License
-
-MIT License — feel free to build on this!
-
----
-
-Built with ❤️ using Next.js + Google Gemini AI
+| Variable | Description |
+|---|---|
+| `OPENROUTER_API_KEY` | Your OpenRouter API key (required) |
