@@ -43,3 +43,27 @@ export interface ChatResponse {
     suggestions?: string[];
     context?: Partial<TravelContext>;
 }
+
+/* ── Itinerary types ── */
+export type ActivityType = "flight" | "hotel" | "food" | "activity" | "transport" | "note";
+
+export interface ItineraryActivity {
+    id: string;
+    type: ActivityType;
+    title: string;
+    time?: string;
+    description?: string;
+    link?: string;
+}
+
+export interface ItineraryDay {
+    id: string;
+    day: number;
+    label?: string;   // "Day 1 — Arrival" etc.
+    activities: ItineraryActivity[];
+}
+
+export interface Itinerary {
+    destination?: string;
+    days: ItineraryDay[];
+}

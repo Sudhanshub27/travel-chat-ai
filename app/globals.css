@@ -1310,3 +1310,452 @@ body {
   margin-bottom: 28px;
   line-height: 1.6;
 }
+
+/* ─── lp-fade-up (for inline animation attr) ─── */
+@keyframes lp-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ═══════════════════════════════════════════
+   CHAT LAYOUT — supports optional itinerary panel
+   ═══════════════════════════════════════════ */
+.chat-root {
+  display: flex;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.chat-column {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/* ── Itinerary badge on map icon ── */
+.itin-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: white;
+  font-size: 9px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--bg);
+}
+
+/* ═══════════════════════════════════════════
+   ITINERARY PANEL
+   ═══════════════════════════════════════════ */
+.itin-panel {
+  width: 320px;
+  flex-shrink: 0;
+  border-left: 1px solid var(--border);
+  background: var(--bg-subtle);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: slideInRight 0.25s ease;
+}
+
+@keyframes slideInRight {
+  from {
+    transform: translateX(20px);
+    opacity: 0;
+  }
+
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+/* ── Panel header ── */
+.itin-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 13px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+  flex-shrink: 0;
+}
+
+.itin-header__left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.itin-header__icon {
+  font-size: 18px;
+}
+
+.itin-header__title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-1);
+}
+
+.itin-header__meta {
+  font-size: 11px;
+  color: var(--text-3);
+  margin-top: 1px;
+}
+
+.itin-header__actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.itin-action-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-2);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 10px;
+  cursor: pointer;
+  transition: all 0.15s;
+  font-family: inherit;
+}
+
+.itin-action-btn:hover {
+  border-color: var(--accent-border);
+  color: var(--accent);
+}
+
+/* ── Empty state ── */
+.itin-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 24px;
+  text-align: center;
+}
+
+.itin-empty__icon {
+  font-size: 36px;
+  margin-bottom: 14px;
+  opacity: 0.4;
+}
+
+.itin-empty__title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-1);
+  margin-bottom: 8px;
+}
+
+.itin-empty__desc {
+  font-size: 12px;
+  color: var(--text-2);
+  line-height: 1.65;
+}
+
+/* ── Days scroll area ── */
+.itin-days {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* ── Day card ── */
+.itin-day {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.itin-day__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-card);
+}
+
+.itin-day__toggle {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-3);
+  display: flex;
+  align-items: center;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.itin-day__num {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  flex-shrink: 0;
+}
+
+.itin-day__label-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  font-size: 12px;
+  color: var(--text-1);
+  font-family: inherit;
+  min-width: 0;
+}
+
+.itin-day__label-input::placeholder {
+  color: var(--text-3);
+}
+
+.itin-day__del {
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.itin-day:hover .itin-day__del {
+  opacity: 1;
+}
+
+/* ── Activities ── */
+.itin-activities {
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.itin-activity {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 7px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  border: 1px solid transparent;
+  transition: border-color 0.15s;
+  position: relative;
+}
+
+.itin-activity:hover {
+  border-color: var(--border);
+}
+
+.itin-activity__icon {
+  font-size: 14px;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.itin-activity__body {
+  flex: 1;
+  min-width: 0;
+}
+
+.itin-activity__top {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.itin-activity__time {
+  font-size: 10px;
+  color: var(--accent);
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.itin-activity__title {
+  font-size: 12px;
+  color: var(--text-1);
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.itin-activity__desc {
+  font-size: 11px;
+  color: var(--text-2);
+  margin-top: 2px;
+  line-height: 1.4;
+}
+
+.itin-activity__link {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10px;
+  color: var(--accent);
+  text-decoration: none;
+  margin-top: 3px;
+}
+
+.itin-activity__link:hover {
+  text-decoration: underline;
+}
+
+.itin-activity__del {
+  opacity: 0;
+  transition: opacity 0.15s;
+  flex-shrink: 0;
+}
+
+.itin-activity:hover .itin-activity__del {
+  opacity: 1;
+}
+
+/* ── Add activity button ── */
+.itin-add-activity-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  width: 100%;
+  padding: 8px 12px;
+  background: none;
+  border: none;
+  font-size: 12px;
+  color: var(--text-3);
+  font-family: inherit;
+  cursor: pointer;
+  text-align: left;
+  transition: color 0.15s;
+}
+
+.itin-add-activity-btn:hover {
+  color: var(--accent);
+}
+
+/* ── Add activity form ── */
+.itin-add-form {
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border-top: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.itin-select,
+.itin-input {
+  width: 100%;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 12px;
+  color: var(--text-1);
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.itin-select:focus,
+.itin-input:focus {
+  border-color: var(--accent-border);
+}
+
+.itin-input::placeholder {
+  color: var(--text-3);
+}
+
+.itin-save-btn {
+  flex: 1;
+  padding: 7px;
+  border-radius: 6px;
+  background: var(--accent);
+  color: white;
+  border: none;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.itin-save-btn:hover {
+  background: var(--accent-light);
+}
+
+.itin-cancel-btn {
+  padding: 7px 14px;
+  border-radius: 6px;
+  background: var(--bg-elevated);
+  color: var(--text-2);
+  border: 1px solid var(--border);
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.itin-cancel-btn:hover {
+  border-color: var(--border-mid);
+  color: var(--text-1);
+}
+
+/* ── Panel footer ── */
+.itin-footer {
+  border-top: 1px solid var(--border);
+  padding: 12px;
+  flex-shrink: 0;
+}
+
+.itin-add-day-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 9px;
+  border-radius: var(--radius-sm);
+  background: var(--accent-dim);
+  border: 1px dashed var(--accent-border);
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.itin-add-day-btn:hover {
+  background: var(--accent);
+  color: white;
+  border-style: solid;
+}
+
+/* ─── Make app-shell work inside chat-root ─── */
+.chat-root .app-shell {
+  height: 100vh;
+  max-width: none;
+  border: none;
+  flex: 1;
+}

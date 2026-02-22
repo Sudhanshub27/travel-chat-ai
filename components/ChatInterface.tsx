@@ -1,9 +1,10 @@
 "use client";
 
 import React, { useState, useRef, useEffect, useCallback } from "react";
-import { Send, Mic, MicOff, Volume2, VolumeX, RotateCcw } from "lucide-react";
-import { Message, TravelContext } from "@/types/travel";
+import { Send, Mic, MicOff, Volume2, VolumeX, RotateCcw, Map } from "lucide-react";
+import { Message, TravelContext, Itinerary } from "@/types/travel";
 import ChatMessage, { TypingIndicator } from "./ChatMessage";
+import ItineraryBuilder, { extractItineraryFromText } from "./ItineraryBuilder";
 
 const INITIAL_MESSAGE: Message = {
     id: "welcome",
@@ -25,6 +26,7 @@ Tell me where you'd like to go and I'll help you find flights, hotels, and activ
 };
 
 const INITIAL_CONTEXT: TravelContext = { phase: "greeting" };
+const EMPTY_ITINERARY: Itinerary = { days: [] };
 
 export default function ChatInterface() {
     const [messages, setMessages] = useState<Message[]>([INITIAL_MESSAGE]);
@@ -34,6 +36,8 @@ export default function ChatInterface() {
     const [isRecording, setIsRecording] = useState(false);
     const [voiceEnabled, setVoiceEnabled] = useState(false);
     const [hasVoiceSupport, setHasVoiceSupport] = useState(false);
+    const [showItinerary, setShowItinerary] = useState(false);
+    const [itinerary, setItinerary] = useState<Itinerary>(EMPTY_ITINERARY);
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -104,20 +108,17 @@ export default function ChatInterface() {
 
             const data = await res.json();
 
+            // Update context
             const updatedContext = { ...context };
             const lowerText = text.toLowerCase();
-
             if (updatedContext.phase === "greeting" || updatedContext.phase === "collecting_destination") {
                 updatedContext.phase = "collecting_origin";
             }
-
             if (lowerText.includes("budget")) updatedContext.budget = "budget";
             else if (lowerText.includes("luxury")) updatedContext.budget = "luxury";
             else if (lowerText.includes("mid") || lowerText.includes("moderate")) updatedContext.budget = "mid-range";
-
             const peopleMatch = text.match(/(\d+)\s*(people|person|pax|adult|passenger)/i);
             if (peopleMatch) updatedContext.people = parseInt(peopleMatch[1]);
-
             setContext(updatedContext);
 
             const assistantMessage: Message = {
@@ -131,6 +132,19 @@ export default function ChatInterface() {
 
             setMessages(prev => [...prev, assistantMessage]);
             speak(data.message);
+
+            // Auto-extract itinerary if AI returned day-by-day plan
+            const extractedDays = extractItineraryFromText(data.message, updatedContext.destination);
+            if (extractedDays.length > 0) {
+                setItinerary(prev => ({
+                    destination: updatedContext.destination || prev.destination,
+                    days: extractedDays,
+                }));
+                setShowItinerary(true);
+            } else if (updatedContext.destination && !itinerary.destination) {
+                setItinerary(prev => ({ ...prev, destination: updatedContext.destination }));
+            }
+
         } catch (error) {
             console.error("Error:", error);
             setMessages(prev => [
@@ -147,33 +161,28 @@ export default function ChatInterface() {
             setIsLoading(false);
             inputRef.current?.focus();
         }
-    }, [input, isLoading, messages, context, speak]);
+    }, [input, isLoading, messages, context, speak, itinerary.destination]);
 
     const toggleRecording = useCallback(() => {
         if (!hasVoiceSupport) return;
-
         if (isRecording) {
             recognitionRef.current?.stop();
             setIsRecording(false);
             return;
         }
-
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         const recognition = new SpeechRecognition();
         recognition.continuous = false;
         recognition.interimResults = false;
         recognition.lang = "en-IN";
-
         recognition.onresult = (event) => {
             const transcript = event.results[0][0].transcript;
             setInput(transcript);
             setIsRecording(false);
             setTimeout(() => sendMessage(transcript), 200);
         };
-
         recognition.onerror = () => setIsRecording(false);
         recognition.onend = () => setIsRecording(false);
-
         recognition.start();
         recognitionRef.current = recognition;
         setIsRecording(true);
@@ -190,113 +199,134 @@ export default function ChatInterface() {
         setMessages([{ ...INITIAL_MESSAGE, timestamp: new Date() }]);
         setContext(INITIAL_CONTEXT);
         setInput("");
+        setItinerary(EMPTY_ITINERARY);
+        setShowItinerary(false);
         synthRef.current?.cancel();
     };
 
     const hasContext = context.destination || context.budget || context.people || context.duration;
+    const itineraryItemCount = itinerary.days.reduce((s, d) => s + d.activities.length, 0);
 
     return (
-        <>
-            {/* Header */}
-            <header className="app-header">
-                <div className="app-header__identity">
-                    <div className="app-header__logo">✈</div>
-                    <div>
-                        <div className="app-header__name">WanderAI</div>
-                        <div className="app-header__status">
-                            <div className="status-dot" />
-                            Ready
+        <div className="chat-root">
+            {/* Main chat column */}
+            <div className="chat-column">
+                {/* Header */}
+                <header className="app-header">
+                    <div className="app-header__identity">
+                        <div className="app-header__logo">✈</div>
+                        <div>
+                            <div className="app-header__name">WanderAI</div>
+                            <div className="app-header__status">
+                                <div className="status-dot" />
+                                Ready
+                            </div>
                         </div>
                     </div>
-                </div>
 
-                <div className="app-header__actions">
-                    {hasVoiceSupport && (
-                        <button
-                            className={`icon-btn ${voiceEnabled ? "active" : ""}`}
-                            onClick={() => setVoiceEnabled(v => !v)}
-                            title={voiceEnabled ? "Mute voice" : "Enable voice"}
-                        >
-                            {voiceEnabled ? <Volume2 size={15} /> : <VolumeX size={15} />}
-                        </button>
-                    )}
-                    <button
-                        className="icon-btn"
-                        onClick={resetChat}
-                        title="New trip"
-                    >
-                        <RotateCcw size={14} />
-                    </button>
-                </div>
-            </header>
-
-            {/* Context bar */}
-            {hasContext && (
-                <div className="context-bar">
-                    {context.destination && <span className="ctx-tag">📍 {context.destination}</span>}
-                    {context.origin && <span className="ctx-tag">from {context.origin}</span>}
-                    {context.people && <span className="ctx-tag">{context.people} people</span>}
-                    {context.budget && <span className="ctx-tag">{context.budget}</span>}
-                    {context.duration && <span className="ctx-tag">{context.duration}</span>}
-                </div>
-            )}
-
-            {/* Messages */}
-            <div className="messages-area">
-                {messages.map((message, i) => (
-                    <ChatMessage
-                        key={message.id}
-                        message={message}
-                        isLatest={i === messages.length - 1}
-                    />
-                ))}
-                {isLoading && <TypingIndicator />}
-                <div ref={messagesEndRef} />
-            </div>
-
-            {/* Input */}
-            <div className="input-bar">
-                <div className="input-wrap">
-                    <textarea
-                        ref={inputRef}
-                        className="input-field"
-                        value={input}
-                        onChange={e => setInput(e.target.value)}
-                        onKeyDown={handleKeyDown}
-                        placeholder="Where would you like to go?"
-                        rows={1}
-                        onInput={(e) => {
-                            const el = e.currentTarget;
-                            el.style.height = "auto";
-                            el.style.height = Math.min(el.scrollHeight, 120) + "px";
-                        }}
-                    />
-
-                    <div className="input-actions">
+                    <div className="app-header__actions">
                         {hasVoiceSupport && (
                             <button
-                                className={`icon-btn ${isRecording ? "active" : ""}`}
-                                onClick={toggleRecording}
-                                title={isRecording ? "Stop" : "Voice input"}
-                                style={isRecording ? { borderColor: "#ef4444", color: "#ef4444" } : {}}
+                                className={`icon-btn ${voiceEnabled ? "active" : ""}`}
+                                onClick={() => setVoiceEnabled(v => !v)}
+                                title={voiceEnabled ? "Mute voice" : "Enable voice"}
                             >
-                                {isRecording ? <MicOff size={14} /> : <Mic size={14} />}
+                                {voiceEnabled ? <Volume2 size={15} /> : <VolumeX size={15} />}
                             </button>
                         )}
                         <button
-                            className="send-btn"
-                            onClick={() => sendMessage()}
-                            disabled={!input.trim() || isLoading}
+                            className={`icon-btn ${showItinerary ? "active" : ""}`}
+                            onClick={() => setShowItinerary(v => !v)}
+                            title="Itinerary builder"
+                            style={{ position: "relative" }}
                         >
-                            <Send size={15} />
+                            <Map size={14} />
+                            {itineraryItemCount > 0 && !showItinerary && (
+                                <span className="itin-badge">{itinerary.days.length}</span>
+                            )}
+                        </button>
+                        <button className="icon-btn" onClick={resetChat} title="New trip">
+                            <RotateCcw size={14} />
                         </button>
                     </div>
+                </header>
+
+                {/* Context bar */}
+                {hasContext && (
+                    <div className="context-bar">
+                        {context.destination && <span className="ctx-tag">📍 {context.destination}</span>}
+                        {context.origin && <span className="ctx-tag">from {context.origin}</span>}
+                        {context.people && <span className="ctx-tag">{context.people} people</span>}
+                        {context.budget && <span className="ctx-tag">{context.budget}</span>}
+                        {context.duration && <span className="ctx-tag">{context.duration}</span>}
+                    </div>
+                )}
+
+                {/* Messages */}
+                <div className="messages-area">
+                    {messages.map((message, i) => (
+                        <ChatMessage
+                            key={message.id}
+                            message={message}
+                            isLatest={i === messages.length - 1}
+                        />
+                    ))}
+                    {isLoading && <TypingIndicator />}
+                    <div ref={messagesEndRef} />
                 </div>
-                <p className="input-hint">
-                    Enter to send · Shift+Enter for new line
-                    {hasVoiceSupport && " · Mic for voice"}
-                </p>
+
+                {/* Input */}
+                <div className="input-bar">
+                    <div className="input-wrap">
+                        <textarea
+                            ref={inputRef}
+                            className="input-field"
+                            value={input}
+                            onChange={e => setInput(e.target.value)}
+                            onKeyDown={handleKeyDown}
+                            placeholder="Where would you like to go?"
+                            rows={1}
+                            onInput={(e) => {
+                                const el = e.currentTarget;
+                                el.style.height = "auto";
+                                el.style.height = Math.min(el.scrollHeight, 120) + "px";
+                            }}
+                        />
+                        <div className="input-actions">
+                            {hasVoiceSupport && (
+                                <button
+                                    className={`icon-btn ${isRecording ? "active" : ""}`}
+                                    onClick={toggleRecording}
+                                    title={isRecording ? "Stop" : "Voice input"}
+                                    style={isRecording ? { borderColor: "#ef4444", color: "#ef4444" } : {}}
+                                >
+                                    {isRecording ? <MicOff size={14} /> : <Mic size={14} />}
+                                </button>
+                            )}
+                            <button
+                                className="send-btn"
+                                onClick={() => sendMessage()}
+                                disabled={!input.trim() || isLoading}
+                            >
+                                <Send size={15} />
+                            </button>
+                        </div>
+                    </div>
+                    <p className="input-hint">
+                        Enter to send · Shift+Enter for new line
+                        {hasVoiceSupport && " · Mic for voice"}
+                    </p>
+                </div>
             </div>
-        </>
+
+            {/* Itinerary panel */}
+            {showItinerary && (
+                <ItineraryBuilder
+                    itinerary={itinerary}
+                    onChange={setItinerary}
+                    onClose={() => setShowItinerary(false)}
+                />
+            )}
+        </div>
     );
 }
