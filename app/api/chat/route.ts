@@ -269,84 +269,66 @@ function buildContextualSuggestions(context: TravelContext, lastUserMessage: str
     const msg = lastUserMessage.toLowerCase();
     const dest = context.destination || "";
 
-    // No destination yet — offer inspiration
     if (!dest) {
-        if (msg.includes("beach") || msg.includes("sea") || msg.includes("coastal")) {
-            return ["Goa", "Maldives", "Bali", "Thailand", "Phuket", "Andaman Islands"];
-        }
-        if (msg.includes("mountain") || msg.includes("hill") || msg.includes("trek")) {
-            return ["Manali", "Shimla", "Ladakh", "Darjeeling", "Mussoorie", "Coorg"];
-        }
-        if (msg.includes("history") || msg.includes("culture") || msg.includes("heritage")) {
-            return ["Rajasthan", "Jaipur", "Agra", "Varanasi", "Istanbul", "Rome"];
-        }
-        if (msg.includes("honeymoon") || msg.includes("romantic") || msg.includes("couple")) {
-            return ["Maldives", "Bali", "Paris", "Santorini", "Kerala", "Switzerland"];
-        }
-        if (msg.includes("family") || msg.includes("kids") || msg.includes("children")) {
-            return ["Singapore", "Dubai", "Goa", "Ooty", "Nainital", "Coorg"];
-        }
-        if (msg.includes("budget") || msg.includes("cheap") || msg.includes("affordable")) {
-            return ["Goa", "Manali", "Rishikesh", "Hampi", "Mcleod Ganj", "Pushkar"];
-        }
-        // Generic starting point
-        return ["Beach vacation", "Mountain trip", "International travel", "Budget trip India", "Luxury getaway", "Weekend escape"];
+        if (msg.includes("beach")) return ["Goa", "Maldives", "Bali", "Phuket", "Andaman"];
+        if (msg.includes("mountain")) return ["Manali", "Shimla", "Ladakh", "Sikkim"];
+        return ["Beach vacation", "Mountain trip", "Budget trip India", "Luxury getaway"];
     }
 
-    // Has destination — suggest based on what was discussed
-    if (msg.includes("food") || msg.includes("eat") || msg.includes("restaurant") || msg.includes("cuisine")) {
-        return [`Best restaurants in ${dest}`, `Street food in ${dest}`, `Local dishes to try`, `Fine dining in ${dest}`, `Food tour ${dest}`];
-    }
-    if (msg.includes("hotel") || msg.includes("stay") || msg.includes("accommodation") || msg.includes("hostel")) {
-        return [
-            context.budget === "luxury" ? `Luxury resorts in ${dest}` : `Budget hotels in ${dest}`,
-            `Airbnb in ${dest}`,
-            `Best areas to stay in ${dest}`,
-            `OYO in ${dest}`,
-            `Homestays in ${dest}`,
-        ];
-    }
-    if (msg.includes("flight") || msg.includes("fly") || msg.includes("airline") || msg.includes("ticket")) {
-        return [`Cheapest flights to ${dest}`, `Direct flights to ${dest}`, `Best time to book flights`, `Airport transfer ${dest}`, `Visa requirements`];
-    }
-    if (msg.includes("activit") || msg.includes("things to do") || msg.includes("attraction") || msg.includes("visit")) {
-        return [`Top sights in ${dest}`, `Adventure activities in ${dest}`, `Day trips from ${dest}`, `Hidden gems in ${dest}`, `Tours in ${dest}`];
-    }
-    if (msg.includes("weather") || msg.includes("season") || msg.includes("when") || msg.includes("time")) {
-        return [`Best month to visit ${dest}`, `Monsoon in ${dest}`, `Winter in ${dest}`, `Peak season tips`, `Packing list for ${dest}`];
-    }
-    if (msg.includes("budget") || msg.includes("cost") || msg.includes("cheap") || msg.includes("expensive") || msg.includes("price")) {
-        return [`Budget itinerary ${dest}`, `Average trip cost ${dest}`, `Free things in ${dest}`, `Money saving tips`, `Luxury vs budget ${dest}`];
-    }
-    if (msg.includes("itinerary") || msg.includes("plan") || msg.includes("day") || msg.includes("schedule")) {
-        return [`3-day ${dest} itinerary`, `5-day ${dest} plan`, `Weekend trip ${dest}`, `Must-see in ${dest}`, `Skip the tourist traps`];
-    }
-    if (msg.includes("visa") || msg.includes("passport") || msg.includes("document")) {
-        return [`Visa on arrival for ${dest}`, `Indian passport visa-free`, `Travel insurance needed?`, `Embassy contact`, `Entry requirements`];
-    }
-
-    // Fallback with destination info — suggest next planning steps
-    if (context.budget) {
-        return [`Best ${context.budget} hotels in ${dest}`, `Activities in ${dest}`, `Local food scene`, `Getting around ${dest}`, `Hidden gems`];
-    }
-
-    return [`Things to do in ${dest}`, `Best time to visit`, `Budget breakdown`, `Book hotels`, `Local cuisine guide`];
+    if (msg.includes("food")) return [`Best restaurants in ${dest}`, `Street food in ${dest}`];
+    if (msg.includes("hotel")) return [`Luxury resorts in ${dest}`, `Budget stay in ${dest}`];
+    return [`Things to do in ${dest}`, `Best time to visit ${dest}`, `5-day itinerary`];
 }
 
-// Call OpenRouter — tries each model in order, handles errors gracefully
-async function callOpenRouter(
+// Main POST handler — supports streaming responses
+export async function POST(req: NextRequest) {
+    try {
+        const { messages, context } = (await req.json()) as {
+            messages: Array<{ role: string; content: string }>;
+            context: TravelContext;
+        };
+
+        const lastUserMsg = messages[messages.length - 1];
+
+        // Build history (drop welcome, enforce alternating)
+        const history: Array<{ role: string; content: string }> = [];
+        for (const m of messages.slice(0, -1)) {
+            if (m.role === "system") continue;
+            if (history.length === 0 || history[history.length - 1].role !== m.role) {
+                history.push({ role: m.role, content: m.content });
+            }
+        }
+
+        const contextHint = context.destination
+            ? `[Trip context: destination=${context.destination}, from=${context.origin || "?"}, budget=${context.budget || "?"}]\n\n`
+            : "";
+
+        const openRouterMessages = [
+            { role: "system", content: SYSTEM_PROMPT },
+            ...history,
+            { role: "user", content: contextHint + lastUserMsg.content },
+        ];
+
+        return await callOpenRouterStream(openRouterMessages);
+    } catch (err) {
+        console.error("[WanderAI] Chat API error:", err);
+        return NextResponse.json({ error: "Server error" }, { status: 500 });
+    }
+}
+
+async function callOpenRouterStream(
     messages: Array<{ role: string; content: string }>,
     modelIndex = 0
-): Promise<string> {
+): Promise<Response> {
     const apiKey = process.env.OPENROUTER_API_KEY;
-    if (!apiKey) throw new Error("OPENROUTER_API_KEY not set in .env.local");
+    if (!apiKey) throw new Error("OPENROUTER_API_KEY not set");
 
     if (modelIndex >= FREE_MODELS.length) {
-        throw new Error("All models exhausted — please try again later");
+        return new Response("All models exhausted", { status: 503 });
     }
 
     const model = FREE_MODELS[modelIndex];
-    console.log(`[WanderAI] Trying model ${modelIndex + 1}/${FREE_MODELS.length}: ${model}`);
+    console.log(`[WanderAI] Streaming with: ${model}`);
 
     const resp = await fetch(OPENROUTER_BASE, {
         method: "POST",
@@ -359,145 +341,59 @@ async function callOpenRouter(
         body: JSON.stringify({
             model,
             messages,
+            stream: true,
             max_tokens: 1200,
             temperature: 0.7,
         }),
     });
 
     if (!resp.ok) {
-        const errBody = await resp.text();
-        console.warn(`[WanderAI] ${model} failed (HTTP ${resp.status}): ${errBody.slice(0, 200)}`);
-
-        const isSystemPromptError =
-            errBody.includes("Developer instruction is not enabled") ||
-            errBody.includes("system role") ||
-            errBody.includes("systemInstruction") ||
-            (resp.status === 400 && errBody.includes("not supported"));
-
-        const isInvalidModelError =
-            errBody.includes("not a valid model") ||
-            errBody.includes("model not found") ||
-            errBody.includes("No endpoints found");
-
-        const shouldFallback =
-            resp.status === 429 ||
-            resp.status === 503 ||
-            resp.status === 502 ||
-            isInvalidModelError ||
-            (resp.status === 400 && isSystemPromptError);
-
-        if (shouldFallback) {
-            if (isSystemPromptError) {
-                console.log(`[WanderAI] System prompt not supported — injecting as user message`);
-                const noSystem = messages.filter((m) => m.role !== "system");
-                if (noSystem.length > 0 && noSystem[0].role === "user") {
-                    noSystem[0] = {
-                        role: "user",
-                        content: `[You are WanderAI, a helpful travel assistant. Suggest real booking links.]\n\n${noSystem[0].content}`,
-                    };
-                }
-                return callOpenRouter(noSystem, modelIndex + 1);
-            }
-            return callOpenRouter(messages, modelIndex + 1);
-        }
-
-        throw new Error(`OpenRouter error ${resp.status}: ${errBody.slice(0, 300)}`);
+        console.warn(`[WanderAI] ${model} failed, trying next...`);
+        return callOpenRouterStream(messages, modelIndex + 1);
     }
 
-    const data = await resp.json();
-    const content = data?.choices?.[0]?.message?.content;
-    if (!content) throw new Error("Empty response from OpenRouter");
+    const encoder = new TextEncoder();
+    const decoder = new TextDecoder();
 
-    console.log(`[WanderAI] Success with: ${model} ✓`);
-    return content as string;
-}
-
-export async function POST(req: NextRequest) {
-    try {
-        const { messages, context } = (await req.json()) as {
-            messages: Array<{ role: string; content: string }>;
-            context: TravelContext;
-        };
-
-        const lastUserMsg = messages[messages.length - 1];
-
-        // Build conversation history — skip static welcome, enforce alternating turns
-        const rawHistory = messages.slice(0, -1).map((m) => ({
-            role: m.role === "user" ? "user" : "assistant",
-            content: m.content,
-        }));
-
-        // Drop leading assistant messages (e.g. static welcome)
-        let start = 0;
-        while (start < rawHistory.length && rawHistory[start].role === "assistant") {
-            start++;
-        }
-        const trimmed = rawHistory.slice(start);
-
-        // Enforce strictly alternating turns
-        const history: Array<{ role: string; content: string }> = [];
-        for (const turn of trimmed) {
-            if (history.length === 0 || history[history.length - 1].role !== turn.role) {
-                history.push(turn);
+    const stream = new ReadableStream({
+        async start(controller) {
+            const reader = resp.body?.getReader();
+            if (!reader) {
+                controller.close();
+                return;
             }
-        }
 
-        // Inject travel context as a hint
-        const contextHint =
-            context.destination || context.budget || context.people
-                ? `[Trip context: destination=${context.destination || "?"}, from=${context.origin || "?"}, people=${context.people || "?"}, budget=${context.budget || "?"}, duration=${context.duration || "?"}]\n\n`
-                : "";
-
-        const openRouterMessages = [
-            { role: "system", content: SYSTEM_PROMPT },
-            ...history,
-            { role: "user", content: contextHint + lastUserMsg.content },
-        ];
-
-        const responseText = await callOpenRouter(openRouterMessages);
-
-        // Parse AI-provided JSON links block
-        let links: TravelLink[] = [];
-        let suggestions: string[] = [];
-        let cleanMessage = responseText;
-
-        const jsonMatch = responseText.match(/```json\n?([\s\S]*?)\n?```/);
-        if (jsonMatch) {
             try {
-                const parsed = JSON.parse(jsonMatch[1]);
-                if (parsed.links && Array.isArray(parsed.links)) links = parsed.links;
-                if (parsed.suggestions && Array.isArray(parsed.suggestions)) suggestions = parsed.suggestions;
-                cleanMessage = responseText.replace(/```json\n?[\s\S]*?\n?```/g, "").trim();
-            } catch {
-                // JSON parse failed — use fallback links below
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    const chunk = decoder.decode(value);
+                    const lines = chunk.split("\n").filter(l => l.trim().startsWith("data: "));
+
+                    for (const line of lines) {
+                        const dataStr = line.replace("data: ", "").trim();
+                        if (dataStr === "[DONE]") continue;
+
+                        try {
+                            const data = JSON.parse(dataStr);
+                            const text = data.choices?.[0]?.delta?.content || "";
+                            if (text) controller.enqueue(encoder.encode(text));
+                        } catch (e) { }
+                    }
+                }
+            } catch (err) {
+                controller.error(err);
+            } finally {
+                controller.close();
             }
-        }
+        },
+    });
 
-        // Build programmatic links if AI didn't provide them
-        if (context.destination && links.length === 0) {
-            links = buildFallbackLinks(context);
-        }
-
-        // Context-aware suggestion chips — shift based on conversation state
-        if (suggestions.length === 0) {
-            suggestions = buildContextualSuggestions(context, lastUserMsg.content);
-        }
-
-        return NextResponse.json({ message: cleanMessage, links, suggestions });
-    } catch (err) {
-        console.error("[WanderAI] Chat API error:", err);
-        const msg = String((err as Error)?.message || "");
-        const isRateLimit = msg.includes("429") || msg.includes("Too Many Requests");
-
-        return NextResponse.json(
-            {
-                message: isRateLimit
-                    ? "⏳ Too many requests right now — please wait a moment and try again!"
-                    : "I'm having trouble connecting. Please try again! 🙏",
-                links: [],
-                suggestions: ["Try again", "Start fresh"],
-            },
-            { status: 200 }
-        );
-    }
+    return new Response(stream, {
+        headers: {
+            "Content-Type": "text/plain; charset=utf-8",
+            "Cache-Control": "no-cache",
+        },
+    });
 }

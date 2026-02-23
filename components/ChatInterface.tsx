@@ -2,9 +2,26 @@
 
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { Send, Mic, MicOff, Volume2, VolumeX, RotateCcw, Map } from "lucide-react";
-import { Message, TravelContext, Itinerary } from "@/types/travel";
+import { Message, TravelContext, Itinerary, TravelLink } from "@/types/travel";
 import ChatMessage, { TypingIndicator } from "./ChatMessage";
 import ItineraryBuilder, { extractItineraryFromText } from "./ItineraryBuilder";
+
+/* Simple context extractor from text */
+function updateContextFromMessage(text: string, current: TravelContext): TravelContext {
+    const next = { ...current };
+    const low = text.toLowerCase();
+
+    if (low.includes("budget")) next.budget = "budget";
+    else if (low.includes("luxury")) next.budget = "luxury";
+    else if (low.includes("mid") || low.includes("moderate")) next.budget = "mid-range";
+
+    if (low.includes("days") || low.includes("week")) {
+        const match = text.match(/(\d+)\s*(day|week|night)/i);
+        if (match) next.duration = match[0];
+    }
+
+    return next;
+}
 
 /* Strip emojis, markdown, URLs before handing text to speech synthesis */
 function cleanForSpeech(text: string): string {
@@ -105,6 +122,8 @@ export default function ChatInterface() {
         const text = (messageText ?? input).trim();
         if (!text || isLoading) return;
 
+        const updatedContext = updateContextFromMessage(text, context);
+        setContext(updatedContext);
         setInput("");
 
         const userMessage: Message = {
@@ -117,46 +136,70 @@ export default function ChatInterface() {
         setMessages(prev => [...prev, userMessage]);
         setIsLoading(true);
 
+        const assistantId = (Date.now() + 1).toString();
+        const placeholderMessage: Message = {
+            id: assistantId,
+            role: "assistant",
+            content: "",
+            timestamp: new Date(),
+        };
+
+        setMessages(prev => [...prev, placeholderMessage]);
+
         try {
-            const allMessages = [...messages, userMessage];
-            const res = await fetch("/api/chat", {
+            const response = await fetch("/api/chat", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    messages: allMessages.map(m => ({ role: m.role, content: m.content })),
-                    context,
+                    messages: [...messages, userMessage],
+                    context: updatedContext,
                 }),
             });
 
-            const data = await res.json();
+            if (!response.ok || !response.body) throw new Error("Stream failed");
 
-            // Update context
-            const updatedContext = { ...context };
-            const lowerText = text.toLowerCase();
-            if (updatedContext.phase === "greeting" || updatedContext.phase === "collecting_destination") {
-                updatedContext.phase = "collecting_origin";
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let fullText = "";
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                const chunk = decoder.decode(value);
+                fullText += chunk;
+
+                setMessages(prev =>
+                    prev.map(m => m.id === assistantId ? { ...m, content: fullText } : m)
+                );
             }
-            if (lowerText.includes("budget")) updatedContext.budget = "budget";
-            else if (lowerText.includes("luxury")) updatedContext.budget = "luxury";
-            else if (lowerText.includes("mid") || lowerText.includes("moderate")) updatedContext.budget = "mid-range";
-            const peopleMatch = text.match(/(\d+)\s*(people|person|pax|adult|passenger)/i);
-            if (peopleMatch) updatedContext.people = parseInt(peopleMatch[1]);
-            setContext(updatedContext);
 
-            const assistantMessage: Message = {
-                id: (Date.now() + 1).toString(),
-                role: "assistant",
-                content: data.message,
-                timestamp: new Date(),
-                links: data.links || [],
-                suggestions: data.suggestions || [],
-            };
+            let cleanMessage = fullText;
+            let links: TravelLink[] = [];
+            let suggestions: string[] = [];
 
-            setMessages(prev => [...prev, assistantMessage]);
-            speak(data.message);
+            const jsonMatch = fullText.match(/```json\n?([\s\S]*?)\n?```/);
+            if (jsonMatch) {
+                try {
+                    const parsed = JSON.parse(jsonMatch[1]);
+                    links = parsed.links || [];
+                    suggestions = parsed.suggestions || [];
+                    cleanMessage = fullText.replace(/```json\n?[\s\S]*?\n?```/g, "").trim();
+                } catch { /* parse fail */ }
+            }
 
-            // Auto-extract itinerary if AI returned day-by-day plan
-            const extractedDays = extractItineraryFromText(data.message, updatedContext.destination);
+            setMessages(prev =>
+                prev.map(m => m.id === assistantId ? {
+                    ...m,
+                    content: cleanMessage,
+                    links: links.length > 0 ? links : m.links,
+                    suggestions: suggestions.length > 0 ? suggestions : m.suggestions
+                } : m)
+            );
+
+            speak(cleanMessage);
+
+            const extractedDays = extractItineraryFromText(cleanMessage, updatedContext.destination);
             if (extractedDays.length > 0) {
                 setItinerary(prev => ({
                     destination: updatedContext.destination || prev.destination,
@@ -169,16 +212,13 @@ export default function ChatInterface() {
 
         } catch (error) {
             console.error("Error:", error);
-            setMessages(prev => [
-                ...prev,
-                {
-                    id: (Date.now() + 1).toString(),
-                    role: "assistant",
-                    content: "Something went wrong. Please try again.",
-                    timestamp: new Date(),
-                    suggestions: ["Try again"],
-                },
-            ]);
+            setMessages(prev => prev.filter(m => m.id !== assistantId).concat([{
+                id: Date.now().toString(),
+                role: "assistant",
+                content: "I'm having trouble connecting to my brain. Please try again!",
+                timestamp: new Date(),
+                suggestions: ["Try again"],
+            }]));
         } finally {
             setIsLoading(false);
             inputRef.current?.focus();
