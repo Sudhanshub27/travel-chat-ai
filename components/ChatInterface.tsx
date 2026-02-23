@@ -6,6 +6,28 @@ import { Message, TravelContext, Itinerary } from "@/types/travel";
 import ChatMessage, { TypingIndicator } from "./ChatMessage";
 import ItineraryBuilder, { extractItineraryFromText } from "./ItineraryBuilder";
 
+/* Strip emojis, markdown, URLs before handing text to speech synthesis */
+function cleanForSpeech(text: string): string {
+    return text
+        // Remove all emoji (Unicode ranges)
+        .replace(/[\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}\u{2300}-\u{23FF}\u{2B00}-\u{2BFF}\u{FE00}-\u{FEFF}\u{1F900}-\u{1F9FF}\u{1FA00}-\u{1FA9F}]/gu, "")
+        .replace(/[\u{1F300}-\u{1F5FF}]/gu, "")
+        .replace(/[\u{1F600}-\u{1F64F}]/gu, "")
+        .replace(/[\u{1F680}-\u{1F6FF}]/gu, "")
+        // Remove markdown: **bold**, *italic*, `code`, ## headings, --- dividers
+        .replace(/\*{1,3}(.*?)\*{1,3}/g, "$1")
+        .replace(/`{1,3}[^`]*`{1,3}/g, "")
+        .replace(/^#{1,6}\s+/gm, "")
+        .replace(/^[-_*]{3,}$/gm, "")
+        // Remove URLs and markdown links
+        .replace(/https?:\/\/[^\s)]+/g, "")
+        .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+        // Remove leftover symbols and collapse whitespace
+        .replace(/[\|~^]/g, "")
+        .replace(/\s+/g, " ")
+        .trim();
+}
+
 const INITIAL_MESSAGE: Message = {
     id: "welcome",
     role: "assistant",
@@ -68,7 +90,7 @@ export default function ChatInterface() {
     const speak = useCallback((text: string) => {
         if (!voiceEnabled || !synthRef.current) return;
         synthRef.current.cancel();
-        const utterance = new SpeechSynthesisUtterance(text.replace(/[*#]/g, "").slice(0, 500));
+        const utterance = new SpeechSynthesisUtterance(cleanForSpeech(text).slice(0, 600));
         utterance.rate = 1.05;
         utterance.pitch = 1.0;
         const voices = synthRef.current.getVoices();
