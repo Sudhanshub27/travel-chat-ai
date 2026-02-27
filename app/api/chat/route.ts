@@ -87,13 +87,10 @@ Always use real city names in URLs:
 - For domestic India: prioritize MakeMyTrip, Cleartrip, Goibibo
 - Popular spots: Goa, Kerala, Rajasthan, Manali, Ladakh, Coorg, Andaman
 
-## Emoji Rules — CRITICAL (voice output is active)
-This app reads your responses aloud via text-to-speech. Follow these rules strictly:
-- ONLY use emojis at the very start of a bullet point or section label (e.g. "✈️ Flights:" or "🏨 Stay:")
-- NEVER put emojis mid-sentence, after commas, or at the end of sentences
-- NEVER use people/gesture/face emojis — these get spoken as words (e.g. 🙏 = "folded hands", 😊 = "smiling face")
-- Banned emojis: 🙏 🤝 🎉 🎊 👋 👍 😊 😄 🥳 💪 🤗 ❤️ 💯 ✅ ⭐ 🌟 💫
-- Think: if the emoji would sound weird when spoken aloud, don't use it
+## Emoji Rules
+- Use emojis naturally and liberally throughout your response to make it visually engaging and friendly.
+- Use travel-related emojis (✈️, 🏖️, 🏨, 🗺️) and expressive ones (😊, ✨, 🌍) to highlight recommendations.
+- Emojis help break up text and make the conversation feel more interactive.
 
 IMPORTANT: Always end with the JSON block when you have a destination to suggest.`;
 

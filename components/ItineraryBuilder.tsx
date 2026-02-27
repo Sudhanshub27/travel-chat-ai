@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Itinerary, ItineraryDay, ItineraryActivity, ActivityType } from "@/types/travel";
 import { Plus, Trash2, ExternalLink, Copy, Check, X, ChevronDown, ChevronUp } from "lucide-react";
 
@@ -49,6 +49,16 @@ export default function ItineraryBuilder({ itinerary, onChange, onClose }: Itine
     const [collapsedDays, setCollapsedDays] = useState<Record<string, boolean>>({});
     const [addingActivity, setAddingActivity] = useState<{ dayId: string } | null>(null);
     const [newActivity, setNewActivity] = useState<Partial<ItineraryActivity>>({ type: "activity" });
+    const addFormRef = useRef<HTMLDivElement>(null);
+
+    /* ── Scroll add form into view ── */
+    useEffect(() => {
+        if (addingActivity) {
+            setTimeout(() => {
+                addFormRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+            }, 100);
+        }
+    }, [addingActivity]);
 
     /* ── Day actions ── */
     const addDay = () => {
@@ -231,7 +241,7 @@ export default function ItineraryBuilder({ itinerary, onChange, onClose }: Itine
 
                                 {/* Add activity form */}
                                 {addingActivity?.dayId === day.id ? (
-                                    <div className="itin-add-form">
+                                    <div className="itin-add-form" ref={addFormRef}>
                                         <select
                                             className="itin-select"
                                             value={newActivity.type}

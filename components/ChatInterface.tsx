@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useRef, useEffect, useCallback } from "react";
-import { Send, Mic, MicOff, Volume2, VolumeX, RotateCcw, Map } from "lucide-react";
+import { Send, Mic, MicOff, RotateCcw, Map } from "lucide-react";
 import { Message, TravelContext, Itinerary, TravelLink } from "@/types/travel";
 import ChatMessage, { TypingIndicator } from "./ChatMessage";
 import ItineraryBuilder, { extractItineraryFromText } from "./ItineraryBuilder";
@@ -23,44 +23,22 @@ function updateContextFromMessage(text: string, current: TravelContext): TravelC
     return next;
 }
 
-/* Strip emojis, markdown, URLs before handing text to speech synthesis */
-function cleanForSpeech(text: string): string {
-    return text
-        // Remove all emoji (Unicode ranges)
-        .replace(/[\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}\u{2300}-\u{23FF}\u{2B00}-\u{2BFF}\u{FE00}-\u{FEFF}\u{1F900}-\u{1F9FF}\u{1FA00}-\u{1FA9F}]/gu, "")
-        .replace(/[\u{1F300}-\u{1F5FF}]/gu, "")
-        .replace(/[\u{1F600}-\u{1F64F}]/gu, "")
-        .replace(/[\u{1F680}-\u{1F6FF}]/gu, "")
-        // Remove markdown: **bold**, *italic*, `code`, ## headings, --- dividers
-        .replace(/\*{1,3}(.*?)\*{1,3}/g, "$1")
-        .replace(/`{1,3}[^`]*`{1,3}/g, "")
-        .replace(/^#{1,6}\s+/gm, "")
-        .replace(/^[-_*]{3,}$/gm, "")
-        // Remove URLs and markdown links
-        .replace(/https?:\/\/[^\s)]+/g, "")
-        .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
-        // Remove leftover symbols and collapse whitespace
-        .replace(/[\|~^]/g, "")
-        .replace(/\s+/g, " ")
-        .trim();
-}
-
 const INITIAL_MESSAGE: Message = {
     id: "welcome",
     role: "assistant",
-    content: `Hi! I'm **WanderAI**, your travel planning assistant.
+    content: `Hi! I'm **WanderAI**, your travel planning assistant. 🗺️
 
-Tell me where you'd like to go and I'll help you find flights, hotels, and activities with real booking links.
+Tell me where you'd like to go and I'll help you find flights, hotels, and activities with real booking links. ✈️
 
 **Where are you thinking of traveling?**`,
     timestamp: new Date(),
     suggestions: [
-        "Beach vacation",
-        "Mountain adventure",
-        "City break",
-        "Nature retreat",
-        "Honeymoon trip",
-        "Family holiday",
+        "Beach vacation 🏖️",
+        "Mountain adventure 🏔️",
+        "City break 🏙️",
+        "Nature retreat 🌲",
+        "Honeymoon trip 🥂",
+        "Family holiday 👨‍👩‍👧‍👦",
     ],
 };
 
@@ -73,7 +51,6 @@ export default function ChatInterface() {
     const [isLoading, setIsLoading] = useState(false);
     const [context, setContext] = useState<TravelContext>(INITIAL_CONTEXT);
     const [isRecording, setIsRecording] = useState(false);
-    const [voiceEnabled, setVoiceEnabled] = useState(false);
     const [hasVoiceSupport, setHasVoiceSupport] = useState(false);
     const [showItinerary, setShowItinerary] = useState(false);
     const [itinerary, setItinerary] = useState<Itinerary>(EMPTY_ITINERARY);
@@ -81,13 +58,10 @@ export default function ChatInterface() {
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLTextAreaElement>(null);
     const recognitionRef = useRef<SpeechRecognition | null>(null);
-    const synthRef = useRef<SpeechSynthesis | null>(null);
 
     useEffect(() => {
         const hasSpeechRecognition = "SpeechRecognition" in window || "webkitSpeechRecognition" in window;
-        const hasSpeechSynthesis = "speechSynthesis" in window;
-        setHasVoiceSupport(hasSpeechRecognition && hasSpeechSynthesis);
-        if (hasSpeechSynthesis) synthRef.current = window.speechSynthesis;
+        setHasVoiceSupport(hasSpeechRecognition);
     }, []);
 
     useEffect(() => {
@@ -103,20 +77,6 @@ export default function ChatInterface() {
         return () => window.removeEventListener("quickReply", handler as EventListener);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [context, messages]);
-
-    const speak = useCallback((text: string) => {
-        if (!voiceEnabled || !synthRef.current) return;
-        synthRef.current.cancel();
-        const utterance = new SpeechSynthesisUtterance(cleanForSpeech(text).slice(0, 600));
-        utterance.rate = 1.05;
-        utterance.pitch = 1.0;
-        const voices = synthRef.current.getVoices();
-        const preferred = voices.find(v => v.lang.startsWith("en") && v.name.includes("Female"))
-            || voices.find(v => v.lang.startsWith("en"))
-            || voices[0];
-        if (preferred) utterance.voice = preferred;
-        synthRef.current.speak(utterance);
-    }, [voiceEnabled]);
 
     const sendMessage = useCallback(async (messageText?: string) => {
         const text = (messageText ?? input).trim();
@@ -197,8 +157,6 @@ export default function ChatInterface() {
                 } : m)
             );
 
-            speak(cleanMessage);
-
             const extractedDays = extractItineraryFromText(cleanMessage, updatedContext.destination);
             if (extractedDays.length > 0) {
                 setItinerary(prev => ({
@@ -223,7 +181,7 @@ export default function ChatInterface() {
             setIsLoading(false);
             inputRef.current?.focus();
         }
-    }, [input, isLoading, messages, context, speak, itinerary.destination]);
+    }, [input, isLoading, messages, context, itinerary.destination]);
 
     const toggleRecording = useCallback(() => {
         if (!hasVoiceSupport) return;
@@ -263,7 +221,6 @@ export default function ChatInterface() {
         setInput("");
         setItinerary(EMPTY_ITINERARY);
         setShowItinerary(false);
-        synthRef.current?.cancel();
     };
 
     const hasContext = context.destination || context.budget || context.people || context.duration;
@@ -287,15 +244,6 @@ export default function ChatInterface() {
                     </div>
 
                     <div className="app-header__actions">
-                        {hasVoiceSupport && (
-                            <button
-                                className={`icon-btn ${voiceEnabled ? "active" : ""}`}
-                                onClick={() => setVoiceEnabled(v => !v)}
-                                title={voiceEnabled ? "Mute voice" : "Enable voice"}
-                            >
-                                {voiceEnabled ? <Volume2 size={15} /> : <VolumeX size={15} />}
-                            </button>
-                        )}
                         <button
                             className={`icon-btn ${showItinerary ? "active" : ""}`}
                             onClick={() => setShowItinerary(v => !v)}
