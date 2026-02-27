@@ -2,15 +2,17 @@
 
 An AI-powered travel assistant that helps you plan complete trips through natural conversation. Powered by **Gemini 2.5 Flash** via OpenRouter.
 
+**Live Demo**: [travel-chat-ai-zeta.vercel.app](https://travel-chat-ai-zeta.vercel.app/)
+
 ## Features
 
 - **Conversational trip planning** — describe your trip in plain language
 - **Real booking links** — flights, hotels, and activities with direct links to 8+ booking sites
 - **Context-aware suggestions** — chip suggestions evolve as the conversation progresses
 - **Light & dark theme** — toggle in the nav, persisted across sessions
-- **Voice input & output** — speak your message, hear responses
+- **Voice input & Emoji engagement** — speak your message; AI responds with engaging emojis
 - **Multi-model fallback** — Gemini 2.5 Flash → Gemini 2.0 Flash → Llama 3.3 70B → Mistral 7B
-- **Scroll animations** — smooth reveal animations on the landing page
+- **Scroll animations & Smooth UI** — refined scrolling and reveal animations
 
 ## Booking Sites Supported
 
