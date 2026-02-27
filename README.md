@@ -1,93 +1,94 @@
-# WanderAI — AI Travel Planning Assistant
+# ✈️ WanderAI
 
-An AI-powered travel assistant that helps you plan complete trips through natural conversation. Powered by **Gemini 2.5 Flash** via OpenRouter.
+A full-stack AI-powered travel planning application that helps users draft perfect itineraries, find real booking links, and explore destinations—all through natural conversation.
 
-**Live Demo**: [travel-chat-ai-zeta.vercel.app](https://travel-chat-ai-zeta.vercel.app/)
+WanderAI handles the research so you can focus on the journey. No sign-up, no credit card—just talk and travel.
 
-## Features
+---
 
-- **Conversational trip planning** — describe your trip in plain language
-- **Real booking links** — flights, hotels, and activities with direct links to 8+ booking sites
-- **Context-aware suggestions** — chip suggestions evolve as the conversation progresses
-- **Light & dark theme** — toggle in the nav, persisted across sessions
-- **Voice input & Emoji engagement** — speak your message; AI responds with engaging emojis
-- **Multi-model fallback** — Gemini 2.5 Flash → Gemini 2.0 Flash → Llama 3.3 70B → Mistral 7B
-- **Scroll animations & Smooth UI** — refined scrolling and reveal animations
+## 🌐 Live Demo
 
-## Booking Sites Supported
+*   **Website**: [travel-chat-ai-zeta.vercel.app](https://travel-chat-ai-zeta.vercel.app/)
 
-| Category | Sites |
-|---|---|
-| Flights | Google Flights, MakeMyTrip, Skyscanner, Goibibo |
-| Hotels | Booking.com, MakeMyTrip, OYO, Agoda, Hotels.com, Goibibo, Cleartrip, Expedia |
-| Stays | Airbnb |
-| Activities | Viator |
-| Maps | Google Maps |
+---
 
-## Getting Started
+## ✨ Key Features
 
-### 1. Clone and install
+*   **AI-Powered Itineraries**: Transform brief travel ideas into detailed day-by-day plans using Gemini 2.5 Flash.
+*   **Real Booking Links**: Integrated search for flights, hotels, and activities across 8+ global providers.
+*   **Dynamic Context**: The AI learns your preferences (budget, style, group size) as the conversation evolves.
+*   **Itinerary Builder**: Interactive side panel to view, edit, and copy your generated trip plans instantly.
+*   **Responsive & Smooth**: Fully optimized for mobile browsers with modern scroll behavior and reveal animations.
+*   **Voice Input**: Speak your travel dreams directly to the AI for a truly conversational experience.
+*   **Light & Dark Mode**: Beautifully crafted themes that persist across your sessions.
 
+---
+
+## 🏗️ Tech Stack
+
+*   **Frontend**: Next.js 16 (App Router), React 19, Vanilla CSS, Lucide React.
+*   **Backend**: Next.js API Routes (Serverless).
+*   **AI Engine**: OpenRouter API (Gemini 2.5 Flash + fallbacks).
+*   **Deployment**: Vercel.
+
+---
+
+## 🚀 Local Setup
+
+### Installation
+
+**1. Clone the repository:**
 ```bash
 git clone https://github.com/Sudhanshub27/travel-chat-ai.git
 cd travel-chat-ai
+```
+
+**2. Install dependencies:**
+```bash
 npm install
 ```
 
-### 2. Set up environment
-
-Create `.env.local` in the project root:
-
+**3. Configure Environment Variables:**
+Create a `.env.local` file in the project root:
 ```env
-OPENROUTER_API_KEY=your_openrouter_api_key_here
+OPENROUTER_API_KEY=your_key_here
 ```
 
-Get your free API key at [openrouter.ai](https://openrouter.ai).
-
-### 3. Run locally
-
+**4. Run the development server:**
 ```bash
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000).
+---
 
-## Tech Stack
-
-- **Framework**: Next.js 16 (App Router, Turbopack)
-- **Language**: TypeScript
-- **Styling**: Vanilla CSS with CSS custom properties (light/dark themes)
-- **AI**: OpenRouter API → Gemini 2.5 Flash
-- **Icons**: Lucide React
-- **Fonts**: Inter (Google Fonts)
-
-## Project Structure
+## 📂 Project Structure
 
 ```
 travel-chat-ai/
 ├── app/
-│   ├── api/chat/route.ts    # OpenRouter API integration + fallback chain
-│   ├── globals.css          # Design system (light/dark themes, animations)
-│   ├── layout.tsx
-│   └── page.tsx             # Landing page with scroll animations
+│   ├── api/chat/route.ts    # AI Logic & Fallback Chain
+│   ├── globals.css          # Design System & Themes
+│   ├── layout.tsx           # Global Layout
+│   └── page.tsx             # Landing Page
 ├── components/
-│   ├── ChatInterface.tsx    # Main chat UI
-│   ├── ChatMessage.tsx      # Message bubbles + formatting
-│   └── LinkCards.tsx        # Booking link cards
-└── types/
-    └── travel.ts            # TypeScript types
+│   ├── ChatInterface.tsx    # Responsive Chat Core
+│   ├── ItineraryBuilder.tsx # Dynamic Trip Manager
+│   └── ChatMessage.tsx      # Interactive Bubbles
+├── types/                   # TypeScript Definitions
+└── README.md                # Documentation
 ```
 
-## Landing Page Sections
+---
 
-1. **Hero** — two-column layout with live chat preview cycling destinations
-2. **Destinations** — auto-scrolling strip of popular travel spots
-3. **Features** — 6-card grid covering what WanderAI does
-4. **How it works** — 3-step guide
-5. **CTA Banner** — call to action with gradient background
+## 🧠 Design Philosophy
 
-## Environment Variables
+This project prioritizes high-quality UX and user empowerment:
+*   **Simplicity**: Planning a trip should be as easy as sending a text.
+*   **Utility**: We provide real links, not just suggestions—making action immediate.
+*   **Engagement**: Rich emojis and smooth animations make the planning process as fun as the trip itself.
 
-| Variable | Description |
-|---|---|
-| `OPENROUTER_API_KEY` | Your OpenRouter API key (required) |
+---
+
+## 📄 License
+
+MIT License — feel free to use and modify for your own projects!
